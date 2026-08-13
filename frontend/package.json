@@ -1,0 +1,21 @@
+{
+  "name": "acervo-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend (React/Vite) do downloader de acervo. Telas de login, catalogo e acervo. Conversa com o backend (Express) pelo proxy /api — o backend precisa estar rodando em paralelo.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "vite": "^8.0.0"
+  }
+}

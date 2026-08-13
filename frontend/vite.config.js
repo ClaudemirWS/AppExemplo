@@ -1,10 +1,12 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// O front (Vite) roda em :5173 e conversa com o servidor Express em :3100 pelo
-// proxy /api. Mesmo padrao do PWA em desenvolvimento: o navegador nunca fala com
-// o backhomologa direto, quem faz isso e o Express (evita CORS e centraliza o
-// token da sessao no servidor).
+// O front (Vite) roda em :5173 e conversa com o BACKEND (projeto irmao em ../backend,
+// Express em :3100) pelo proxy /api. Os dois rodam SEPARADOS, cada um no seu terminal:
+//   ../backend > npm run dev     (sobe o Express em :3100)
+//   ./         > npm run dev     (sobe o Vite em :5173, com este proxy)
+// O navegador nunca fala com o backhomologa direto — quem faz isso e o Express (evita
+// CORS e centraliza o token da sessao no servidor).
 export default defineConfig({
   root: "web",
   plugins: [react()],

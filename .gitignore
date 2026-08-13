@@ -1,6 +1,6 @@
+# Rede de seguranca da raiz. Cada lado (backend/ frontend/) tem o seu proprio
+# .gitignore com as regras especificas.
 node_modules/
 dist/
-acervo/*
-!acervo/.gitkeep
 .env
 *.log

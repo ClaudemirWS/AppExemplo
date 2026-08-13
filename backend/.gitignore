@@ -1,0 +1,7 @@
+node_modules/
+.env
+*.log
+
+# Acervo baixado (zips) — dado local, nao versionado. So o .gitkeep mantem a pasta.
+acervo/*
+!acervo/.gitkeep
