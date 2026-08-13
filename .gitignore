@@ -1,0 +1,6 @@
+node_modules/
+dist/
+acervo/*
+!acervo/.gitkeep
+.env
+*.log

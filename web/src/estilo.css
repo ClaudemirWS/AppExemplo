@@ -1,0 +1,237 @@
+:root {
+  --bg: #16181d;
+  --bg-2: #1e2127;
+  --bg-3: #262a32;
+  --linha: #313640;
+  --txt: #e7e9ee;
+  --txt-2: #9aa1ad;
+  --acento: #4c8dff;
+  --verde: #46c46a;
+  --amarelo: #e0b53a;
+  --vermelho: #e0603a;
+  --cinza: #6b7280;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--txt);
+  font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+}
+
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid var(--linha);
+  background: var(--bg-3);
+  color: var(--txt);
+  padding: 7px 14px;
+  border-radius: 7px;
+  transition: filter .12s, background .12s;
+}
+button:hover:not(:disabled) { filter: brightness(1.18); }
+button:disabled { opacity: .45; cursor: default; }
+button.primario { background: var(--acento); border-color: var(--acento); color: #fff; font-weight: 600; }
+
+input, select {
+  font: inherit;
+  background: var(--bg-2);
+  color: var(--txt);
+  border: 1px solid var(--linha);
+  border-radius: 7px;
+  padding: 7px 10px;
+}
+
+.app { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+.topo {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--linha);
+}
+.topo h1 { font-size: 18px; margin: 0; }
+.topo .usuario { color: var(--txt-2); font-size: 13px; }
+
+.abas { display: flex; gap: 6px; margin-bottom: 16px; }
+.abas button.ativa { background: var(--acento); border-color: var(--acento); color: #fff; }
+
+/* Login */
+.login-caixa {
+  max-width: 360px; margin: 12vh auto 0; background: var(--bg-2);
+  padding: 28px; border-radius: 12px; border: 1px solid var(--linha);
+}
+.login-caixa h1 { font-size: 20px; margin: 0 0 4px; }
+.login-caixa p { color: var(--txt-2); margin: 0 0 20px; font-size: 13px; }
+.campo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+.campo label { font-size: 12px; color: var(--txt-2); }
+.campo input { width: 100%; }
+
+.filtros { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
+.filtro { display: flex; flex-direction: column; gap: 5px; }
+.filtro label { font-size: 12px; color: var(--txt-2); }
+.filtro select, .filtro input { min-width: 160px; }
+
+/* Busca por id/nome no acervo: input com botao de limpar sobreposto. */
+.filtro-busca .busca-wrap { position: relative; display: inline-flex; }
+.filtro-busca input { min-width: 240px; padding-right: 26px; }
+.busca-limpar {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: 0; color: var(--txt-2); cursor: pointer;
+  font-size: 18px; line-height: 1; padding: 0 4px;
+}
+.busca-limpar:hover { color: var(--txt-1); }
+
+.barra-acao {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
+  padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--linha); border-radius: 8px;
+}
+.barra-acao .contagem { color: var(--txt-2); font-size: 13px; }
+.barra-acao .espaco { flex: 1; }
+
+/* Paginacao do acervo (10 por pagina): anterior / indicador / proxima. */
+.paginacao {
+  display: flex; align-items: center; justify-content: center; gap: 14px;
+  margin-top: 14px;
+}
+.paginacao-indicador { color: var(--txt-2); font-size: 13px; min-width: 130px; text-align: center; }
+
+.aviso { padding: 8px 12px; border-radius: 7px; font-size: 13px; margin-bottom: 12px; }
+.aviso.erro { background: #3a1f1a; border: 1px solid var(--vermelho); color: #ffb9a3; }
+.aviso.info { background: #1a2a3a; border: 1px solid var(--acento); color: #a3d0ff; }
+
+.tabela-wrap { overflow-x: auto; border: 1px solid var(--linha); border-radius: 8px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--linha); white-space: nowrap; }
+th { background: var(--bg-3); color: var(--txt-2); font-weight: 600; font-size: 12px; position: sticky; top: 0; }
+td.nome { white-space: normal; min-width: 280px; }
+tr:hover td { background: var(--bg-2); }
+tr.indisponivel td { color: var(--txt-2); }
+td.check { width: 34px; text-align: center; }
+input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--acento); cursor: pointer; }
+
+.selo { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+.selo.desconhecido { background: var(--bg-3); color: var(--txt-2); }
+.selo.construct2 { background: #2a2340; color: #c9b3ff; }
+.selo.construct3 { background: #1f3320; color: #a7e6ac; }
+.selo.animate { background: #33261a; color: #f0c89a; }
+.selo.html { background: #1a2e33; color: #9adfe6; }
+.selo.flash { background: #3a1f1a; color: #ffb9a3; }
+.selo.valberto { background: #2e2a1a; color: #e6d79a; }
+.selo.ok { background: #1f3320; color: #a7e6ac; }
+.selo.erro { background: #3a1f1a; color: #ffb9a3; }
+.selo.baixando { background: #1a2a3a; color: #a3d0ff; }
+
+/* Coluna "Acervo" do catalogo: indica quem ja foi baixado. Mesmo formato pill dos
+   selos de formato, no verde do acervo. Quem nao esta baixado mostra so um traco
+   discreto (nao compete visualmente com os baixados). */
+.col-acervo { white-space: nowrap; }
+.selo-baixado {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  background: #17301b; color: #7fdd90; border: 1px solid #2f6b3a;
+}
+.selo-indisp {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  background: #34190f; color: #ffb9a3; border: 1px solid #6b3324;
+  cursor: help;
+}
+.traco-acervo { color: var(--txt-2); opacity: .5; }
+
+/* Identidade tecnica: external_id + selo Construct/Flash. Serve para distinguir
+   duas aulas de mesmo nome (a Flash antiga da Construct nova). */
+.identidade { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.identidade .ext {
+  font-family: ui-monospace, monospace; font-size: 11px; color: var(--txt-2);
+  background: var(--bg-3); padding: 1px 6px; border-radius: 4px; cursor: help;
+}
+
+/* Celula expansivel (colunas Versao e Paginas): resumo clicavel ("5 pags ▼") que
+   abre a lista por pagina (P1 - v4, ou P1: <LO>) numa JANELINHA FLUTUANTE — nao
+   estica a linha da tabela. O popover e position:absolute ancorado no wrap. */
+.col-expansivel { vertical-align: middle; }
+.exp-wrap { position: relative; display: inline-block; }
+.exp-resumo {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--bg-3); color: var(--txt-1); border: 0; cursor: pointer;
+  font-size: 12px; padding: 2px 8px; border-radius: 6px;
+}
+.exp-resumo:hover { filter: brightness(1.2); }
+.exp-resumo[aria-expanded="true"] { outline: 1px solid var(--linha); }
+.exp-seta { font-size: 8px; color: var(--txt-2); }
+.exp-lista {
+  /* position:fixed + top/left inline (via JS) — escapa do .tabela-wrap com overflow,
+     sem gerar barra de rolagem. */
+  position: fixed;
+  z-index: 100;
+  min-width: 120px;
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none; margin: 0; padding: 6px;
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--bg-2);
+  border: 1px solid var(--linha);
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+}
+.exp-lista li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; white-space: nowrap; }
+.exp-rotulo { color: var(--txt-2); min-width: 22px; }
+.exp-valor { font-family: ui-monospace, monospace; color: #a7e6ac; }
+
+/* Pagina que nao baixou (formato incompativel): alerta ambar no resumo e na linha. */
+.exp-resumo-alerta { color: #ffcf9a; }
+.exp-aviso { font-size: 11px; }
+.exp-lista li.exp-faltante { color: #ffb9a3; cursor: help; }
+.exp-lista li.exp-faltante .exp-rotulo { color: #ffb9a3; }
+.exp-lista li.exp-faltante .exp-valor { color: #ffb9a3; white-space: normal; }
+
+/* Fila */
+.fila { background: var(--bg-2); border: 1px solid var(--linha); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+.fila h3 { margin: 0 0 10px; font-size: 14px; }
+.fila-item { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
+.fila-item .fnome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progresso { width: 120px; height: 7px; background: var(--bg-3); border-radius: 4px; overflow: hidden; }
+.progresso i { display: block; height: 100%; background: var(--acento); transition: width .2s; }
+
+.barra-selo { display: inline-flex; align-items: center; gap: 8px; }
+.barra-selo .progresso { width: 90px; }
+.barra-selo .pct { font-size: 12px; color: var(--txt-2); min-width: 42px; }
+
+/* Coluna de acoes com dois botoes (baixar estrutura + apagar). Botoes quadrados
+   com cantos arredondados, PREENCHIDOS com a cor da acao ja em repouso (azul=baixar,
+   vermelho=apagar) e icone branco — os antigos eram emoji transparente, quase
+   invisiveis. Base comum em .acao-icone; cada classe define a cor solida. */
+td.check.acoes-linha { width: 92px; white-space: nowrap; }
+.acoes-linha { display: flex; gap: 8px; justify-content: center; align-items: center; }
+
+.acao-icone {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0; font-size: 16px; line-height: 1;
+  border-radius: 8px; border: 1px solid transparent; color: #fff; cursor: pointer;
+  transition: background .12s, border-color .12s, transform .05s, box-shadow .12s;
+}
+.acao-icone:hover:not(:disabled) { transform: translateY(-1px); }
+.acao-icone:active:not(:disabled) { transform: translateY(0); }
+.acao-icone:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.acao-icone:disabled { opacity: .5; cursor: default; }
+
+.baixar-estrutura { background: var(--acento); }
+.baixar-estrutura:hover:not(:disabled) {
+  background: #3a7bff; box-shadow: 0 2px 8px rgba(76, 141, 255, .4);
+}
+.lixeira { background: var(--vermelho); }
+.lixeira:hover:not(:disabled) {
+  background: #d24d27; box-shadow: 0 2px 8px rgba(224, 96, 58, .4);
+}
+
+/* Spinner branco enquanto apaga (substitui o icone da lixeira). */
+.spin-acao {
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff;
+  animation: spin-acao .6s linear infinite;
+}
+@keyframes spin-acao { to { transform: rotate(360deg); } }
+
+.vazio { padding: 40px; text-align: center; color: var(--txt-2); }
+.carregando { padding: 30px; text-align: center; color: var(--txt-2); }
