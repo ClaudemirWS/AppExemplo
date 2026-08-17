@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, baixarEmMassa } from "./api.js";
+import { api, baixarEmMassa, baixarEstruturaLOs } from "./api.js";
 
 // Icones dos botoes de acao. SVG inline (nao emoji): herdam a cor branca via
 // `currentColor`, escalam nitido e nao dependem da fonte de emoji do SO — o 🗑
@@ -24,14 +24,6 @@ function IconeLixeira() {
       <line x1="14" y1="11" x2="14" y2="17" />
     </svg>
   );
-}
-
-// Baixa a estrutura de LOs de um conteudo. O SERVIDOR reempacota o zip do acervo no
-// formato pedido (Nome [externalId-da-aula]/<externalId-do-LO>/... com os arquivos
-// reais + txt vazio) e responde com Content-Disposition: attachment. Basta navegar
-// para a rota — o navegador baixa. Feito no servidor porque ele ja tem o zip em disco.
-function baixarEstruturaLOs(item) {
-  window.location.href = `/api/acervo/${encodeURIComponent(item.id)}/estrutura`;
 }
 
 function classeFormato(f) {
@@ -298,6 +290,17 @@ export default function Acervo() {
   }
 
   useEffect(carregar, []);
+
+  // Baixa a estrutura de LOs (zip). Via fetch em BASE_API (nao window.location, que
+  // no Render cairia no frontend). Mostra erro se falhar — antes falhava em silencio.
+  async function baixarEstrutura(item) {
+    setErro("");
+    try {
+      await baixarEstruturaLOs(item.id);
+    } catch (err) {
+      setErro(`Falha ao baixar "${item.nome}": ${err.message}`);
+    }
+  }
 
   async function remover(item) {
     if (!window.confirm(`Apagar "${item.nome}" do acervo? Os arquivos serao removidos do disco.`)) {
@@ -692,7 +695,7 @@ export default function Acervo() {
                       <td className="col-acoes">
                         <div className="acoes-linha">
                           <button className="acao-icone baixar-estrutura" title="Baixar estrutura de LOs (zip: uma pasta por LO com os arquivos da aula)"
-                            onClick={() => baixarEstruturaLOs(item)}>
+                            onClick={() => baixarEstrutura(item)}>
                             <IconeBaixar />
                           </button>
                           <button className="acao-icone lixeira" title="Apagar do acervo"

@@ -52,6 +52,33 @@ export const api = {
   verificacoes: () => json("/acervo/verificacoes")
 };
 
+// Baixa a estrutura de LOs (zip) de um conteudo do acervo. NAO usa window.location
+// (URL relativa cairia no frontend no Render, servindo o index.html -> "voltava pro
+// catalogo"): busca via fetch em BASE_API com credenciais, le o blob e dispara o
+// save no cliente. O nome do arquivo vem do Content-Disposition do servidor.
+export async function baixarEstruturaLOs(id) {
+  const resposta = await fetch(`${BASE_API}/api/acervo/${encodeURIComponent(id)}/estrutura`, {
+    credentials: "include"
+  });
+  if (!resposta.ok) {
+    const dados = await resposta.json().catch(() => ({}));
+    throw new Error(dados?.erro || `HTTP ${resposta.status}`);
+  }
+  const blob = await resposta.blob();
+  // Nome do arquivo: Content-Disposition (filename*=UTF-8''...) ou fallback.
+  const cd = resposta.headers.get("Content-Disposition") || "";
+  const m = /filename\*=UTF-8''([^;]+)/i.exec(cd) || /filename="?([^";]+)"?/i.exec(cd);
+  const nome = m ? decodeURIComponent(m[1]) : `acervo-${id}.zip`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // Download em massa via SSE. Recebe os ITENS selecionados (id + metadados de
 // serie/segmento/disciplina), para o servidor gravar a classificacao real no
 // acervo. Chama os callbacks conforme os eventos chegam.
