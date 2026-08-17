@@ -8,7 +8,7 @@ import { varrerCatalogo } from "./catalogo.js";
 import { baixarConteudo, montarClassificacao } from "./baixarConteudo.js";
 import { obterRaizAcervo } from "../adaptadores/fsAcervo.js";
 import { PASTA_CONTEUDOS_OFFLINE, MENSAGEM_AULA_INDISPONIVEL_OFFLINE } from "../nucleo-conteudo/constantes.js";
-import { unzipSync, zipSync, strFromU8, strToU8 } from "fflate";
+import { unzipSync, unzip, zipSync, Zip, ZipPassThrough, strFromU8, strToU8 } from "fflate";
 import {
   removerDoManifestoR2,
   lerIndisponiveis,
@@ -589,7 +589,11 @@ app.get("/api/acervo/:id/estrutura", async (req, res) => {
     const bytesRaw = r2Configurado()
       ? await lerObjeto(alvo.arquivo)
       : await fs.readFile(path.join(obterRaizAcervo(), PASTA_CONTEUDOS_OFFLINE, alvo.arquivo));
-    const origem = unzipSync(new Uint8Array(bytesRaw));
+    // Descompacta de forma ASSINCRONA (nao trava o event loop como unzipSync — no free
+    // tier isso importava). `origem` = { caminho: Uint8Array }.
+    const origem = await new Promise((resolve, reject) =>
+      unzip(new Uint8Array(bytesRaw), (err, dados) => (err ? reject(err) : resolve(dados)))
+    );
     const indice = JSON.parse(strFromU8(origem["indice.json"]));
 
     // Mapa: "pagina-<ordem>" -> externalId daquela pagina.
@@ -599,7 +603,14 @@ app.get("/api/acervo/:id/estrutura", async (req, res) => {
     }
 
     const raiz = nomeSeguroAcervo(`${indice.nome} [${indice.externalId || indice.id}]`, `Conteudo [${id}]`);
-    const saida = {};
+
+    // Monta a lista de entradas do zip de saida (nome final -> bytes), sem ainda
+    // recomprimir nada. A recompressao acontece ESCOANDO abaixo, um arquivo por vez.
+    // `nomes` evita caminhos duplicados: o zip de origem ja pode conter um
+    // <externalId>.txt dentro da pagina — sem esta guarda, o .txt vazio adicionado
+    // abaixo colidiria e um dos dois se perderia ao reabrir o zip.
+    const entradas = [];
+    const nomes = new Set();
     for (const [caminho, conteudo] of Object.entries(origem)) {
       if (caminho === "indice.json") continue;               // metadado interno, nao entra
       const barra = caminho.indexOf("/");
@@ -608,22 +619,48 @@ app.get("/api/acervo/:id/estrutura", async (req, res) => {
       const resto = caminho.slice(barra + 1);                 // "appmanifest.json"
       const ext = extPorPagina.get(pastaPagina);
       if (!ext) continue;                                     // pagina sem externalId (legado) — sem "LO"
-      saida[`${raiz}/${ext}/${resto}`] = conteudo;            // arquivos reais na pasta do LO
+      const nome = `${raiz}/${ext}/${resto}`;
+      if (nomes.has(nome)) continue;
+      nomes.add(nome);
+      entradas.push([nome, conteudo]);                        // arquivos reais na pasta do LO
     }
-    // Um .txt vazio por LO, junto do conteudo.
+    // Um .txt vazio por LO — so se ainda nao existir esse caminho (ver nota acima).
     for (const ext of extPorPagina.values()) {
-      saida[`${raiz}/${ext}/${ext}.txt`] = strToU8("");
+      const nome = `${raiz}/${ext}/${ext}.txt`;
+      if (nomes.has(nome)) continue;
+      nomes.add(nome);
+      entradas.push([nome, strToU8("")]);
     }
 
-    const zip = zipSync(saida, { level: 6 });
     res.setHeader("Content-Type", "application/zip");
     res.setHeader(
       "Content-Disposition",
       `attachment; filename*=UTF-8''${encodeURIComponent(`${raiz}.zip`)}`
     );
-    res.end(Buffer.from(zip));
+
+    // ESCOA o zip para o cliente em pedacos (fflate Zip streaming): cada chunk gerado
+    // e escrito no res na hora, em vez de montar o zip inteiro em memoria + Buffer.from
+    // (que duplicava tudo). Isso mantem o pico de RAM baixo — o que estourava no free
+    // tier do Render (502). ZipPassThrough = STORE (sem recomprimir): os assets de aula
+    // ja sao majoritariamente comprimidos, entao evita o custo de CPU/RAM da deflate.
+    await new Promise((resolve, reject) => {
+      const zip = new Zip((err, chunk, final) => {
+        if (err) return reject(err);
+        res.write(Buffer.from(chunk));
+        if (final) resolve();
+      });
+      for (const [nome, bytes] of entradas) {
+        const arq = new ZipPassThrough(nome);
+        zip.add(arq);
+        arq.push(bytes, true); // true = ultimo (e o unico) chunk deste arquivo
+      }
+      zip.end();
+    });
+    res.end();
   } catch (erro) {
-    res.status(500).json({ erro: erro.message });
+    // Se ja comecamos a escoar o zip, nao da para trocar para JSON de erro — so encerra.
+    if (res.headersSent) { res.end(); }
+    else { res.status(500).json({ erro: erro.message }); }
   }
 });
 
