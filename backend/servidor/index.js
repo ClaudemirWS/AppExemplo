@@ -140,7 +140,7 @@ function exigirSessao(req, res) {
   const sid = lerCookie(req, NOME_COOKIE_SESSAO);
   const sessao = sid ? SESSOES.get(sid) : null;
   if (!sessao?.token) {
-    res.status(401).json({ erro: "Nao autenticado." });
+    res.status(401).json({ erro: "Não autenticado." });
     return false;
   }
   req.sid = sid;
@@ -207,7 +207,7 @@ app.post("/api/login", async (req, res) => {
   try {
     const { usuario, senha } = req.body || {};
     if (!usuario || !senha) {
-      return res.status(400).json({ erro: "Informe usuario e senha." });
+      return res.status(400).json({ erro: "Informe usuário e senha." });
     }
     const dados = await login({ usuario, senha });
 
@@ -550,7 +550,7 @@ app.delete("/api/acervo/:id", async (req, res) => {
     const itens = await lerAcervo();
     const alvo = itens.find(i => String(i.id) === id);
     if (!alvo) {
-      return res.status(404).json({ erro: "Conteudo nao encontrado no acervo." });
+      return res.status(404).json({ erro: "Conteúdo não encontrado no acervo."});
     }
 
     if (r2Configurado()) {
@@ -587,7 +587,7 @@ app.get("/api/acervo/:id/estrutura", async (req, res) => {
   try {
     const itens = await lerAcervo();
     const alvo = itens.find(i => String(i.id) === id);
-    if (!alvo) return res.status(404).json({ erro: "Conteudo nao encontrado no acervo." });
+    if (!alvo) return res.status(404).json({ erro: "Conteúdo não encontrado no acervo."});
 
     // Le o zip do R2 (fonte atual) ou do disco (fallback).
     const bytesRaw = r2Configurado()

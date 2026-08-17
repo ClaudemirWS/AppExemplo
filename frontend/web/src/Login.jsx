@@ -22,23 +22,26 @@ export default function Login({ onEntrar }) {
   }
 
   return (
-    <form className="login-caixa" onSubmit={enviar}>
-      <h1>Acervo Educandus</h1>
-      <p>Downloader de conteudos. Entre com sua credencial do AVA.</p>
+    <div className="login-tela">
+      <form className="login-caixa" onSubmit={enviar}>
+        <div className="login-marca">
+          <img className="login-logo" src="/logo-educandus-branco.png" alt="Educandus" />
+        </div>
 
-      {erro && <div className="aviso erro">{erro}</div>}
+        {erro && <div className="aviso erro">{erro}</div>}
 
-      <div className="campo">
-        <label>Usuario</label>
-        <input value={usuario} onChange={e => setUsuario(e.target.value)} autoFocus />
-      </div>
-      <div className="campo">
-        <label>Senha</label>
-        <input type="password" value={senha} onChange={e => setSenha(e.target.value)} />
-      </div>
-      <button className="primario" style={{ width: "100%" }} disabled={entrando}>
-        {entrando ? "Entrando..." : "Entrar"}
-      </button>
-    </form>
+        <div className="campo">
+          <label>Usuário</label>
+          <input value={usuario} onChange={e => setUsuario(e.target.value)} autoFocus />
+        </div>
+        <div className="campo">
+          <label>Senha</label>
+          <input type="password" value={senha} onChange={e => setSenha(e.target.value)} />
+        </div>
+        <button className="primario login-entrar" disabled={entrando}>
+          {entrando ? "Entrando..." : "Entrar"}
+        </button>
+      </form>
+    </div>
   );
 }

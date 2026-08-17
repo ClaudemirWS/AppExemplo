@@ -35,6 +35,21 @@ function classeFormato(f) {
   return "desconhecido";
 }
 
+// Rotulo AMIGAVEL do formato (so exibicao — nao altera a deteccao nem os dados).
+// Os nomes tecnicos sao longos e "vazam" a implementacao; aqui encurtamos para a UI.
+const ROTULO_FORMATO = {
+  "construct2": "Construct 2",
+  "construct3": "Construct 3",
+  "animate-autonomo": "Animate",
+  "html-modelo-classico": "HTML-Script",
+  "html-moderno": "HTML-Unificado",
+  "html-educandus": "HTML-Educandus",
+  "html": "HTML"
+};
+function rotuloFormato(f) {
+  return ROTULO_FORMATO[String(f || "").toLowerCase()] || f;
+}
+
 function selosDeFormato(item, estadoDownload) {
   // Enquanto ATUALIZA (rebaixa), a celula Formato vira a barra de progresso — o
   // mesmo visual "barra-selo" do Catalogo (na fila -> baixando % -> tentativa N).
@@ -56,9 +71,9 @@ function selosDeFormato(item, estadoDownload) {
     return <span className="selo erro" title={estadoDownload.motivo}>erro</span>;
   }
   const lista = item.formatos?.length ? item.formatos : [item.formato].filter(Boolean);
-  if (!lista.length) return <span className="selo desconhecido">desconhecido</span>;
+  if (!lista.length) return <span className="selo desconhecido">Desconhecido</span>;
   return lista.map((f, i) => (
-    <span key={i} className={`selo ${classeFormato(f)}`} style={{ marginRight: 4 }}>{f}</span>
+    <span key={i} className={`selo ${classeFormato(f)}`} style={{ marginRight: 4 }} title={f}>{rotuloFormato(f)}</span>
   ));
 }
 
@@ -93,7 +108,7 @@ function detalhePorPagina(item) {
       externalId: p.externalId || "",
       n: null,
       baixada: false,
-      motivo: p.motivo || "Formato nao disponivel offline."
+      motivo: p.motivo || "Formato não disponível offline."
     }))
   ].sort((a, b) => a.ordem - b.ordem);
 
@@ -114,13 +129,13 @@ function selosDeIdentidade(item) {
   return (
     <span className="identidade">
       {item.externalId
-        ? <span className="ext" title="external_id — ID da aula no publicador (as paginas sao os LOs)">#{item.externalId}</span>
+        ? <span className="ext" title="external_id — ID da aula no publicador (as páginas são os LOs)">#{item.externalId}</span>
         : null}
       <span className={`selo ${ehFlash ? "flash" : "construct3"}`}
         title={ehFlash
-          ? "Flash legado (converted=NAO): NAO roda offline"
-          : "Convertido (Construct/HTML5): baixavel e roda offline"}>
-        {ehFlash ? "Flash (nao-offline)" : "Convertido"}
+          ? "Flash legado (converted=NAO): não roda offline"
+          : "Convertido (Construct/HTML5): baixável e roda offline"}>
+        {ehFlash ? "Flash (não-offline)" : "Convertido"}
       </span>
     </span>
   );
@@ -147,7 +162,7 @@ function dataAmigavel(iso) {
 function seloAtualizacao(r) {
   if (!r) {
     return (
-      <span className="atualizacao-nunca" title="Esta aula ainda nao foi verificada. Selecione e clique em Verificar atualizacoes.">
+      <span className="atualizacao-nunca" title="Esta aula ainda não foi verificada. Selecione e clique em Verificar atualizações.">
         —
       </span>
     );
@@ -156,11 +171,11 @@ function seloAtualizacao(r) {
   let selo;
   if (r.situacao === "desatualizado") {
     const quais = (r.paginasDesatualizadas || []).join(", ");
-    selo = <span className="selo flash" title={quais ? `Paginas com versao nova: ${quais}` : "Versao nova no AVA"}>atualizar</span>;
+    selo = <span className="selo flash" title={quais ? `Páginas com versão nova: ${quais}` : "Versão nova no AVA"}>atualizar</span>;
   } else if (r.situacao === "atualizado") {
-    selo = <span className="selo ok" title="Todas as paginas na versao mais recente">em dia</span>;
+    selo = <span className="selo ok" title="Todas as páginas na versão mais recente">em dia</span>;
   } else if (r.situacao === "nao-versionavel") {
-    selo = <span className="selo desconhecido" title="Sem versao a comparar">n/d</span>;
+    selo = <span className="selo desconhecido" title="Sem versão a comparar">n/d</span>;
   } else {
     selo = <span className="selo erro" title="Falha ao consultar o AVA">erro</span>;
   }
@@ -221,7 +236,7 @@ function CelulaExpansivel({ aberto, onAlternar, resumo, titulo, linhas, alerta =
         onClick={onAlternar}
       >
         {resumo}
-        {alerta ? <span className="exp-aviso" aria-label="pagina faltante">⚠</span> : null}
+        {alerta ? <span className="exp-aviso" aria-label="página faltante">⚠</span> : null}
         <span className="exp-seta">{aberto ? "▲" : "▼"}</span>
       </button>
       {aberto && pos && (
@@ -303,7 +318,7 @@ export default function Acervo() {
   }
 
   async function remover(item) {
-    if (!window.confirm(`Apagar "${item.nome}" do acervo? Os arquivos serao removidos do disco.`)) {
+    if (!window.confirm(`Apagar "${item.nome}" do acervo? Os arquivos serão removidos do disco.`)) {
       return;
     }
     setRemovendo(item.id);
@@ -327,7 +342,7 @@ export default function Acervo() {
     setAviso("");
     try {
       const r = await api.reindexarAcervo(ids);
-      setAviso(`Reindexados ${r.reindexados} conteudos${r.naoEncontrados ? `, ${r.naoEncontrados} nao achados no catalogo` : ""}.`);
+      setAviso(`Reindexados ${r.reindexados} conteúdos${r.naoEncontrados ? `, ${r.naoEncontrados} não achados no catálogo` : ""}.`);
       carregar();
     } catch (err) {
       setErro(err.message);
@@ -363,8 +378,8 @@ export default function Acervo() {
       });
       const n = (r.resultados || []).filter(x => x.situacao === "desatualizado").length;
       setAviso(n
-        ? `${n} aula(s) com versao nova no AVA — marcadas com "atualizar". Rebaixe para atualizar.`
-        : "Nenhuma das aulas verificadas esta desatualizada.");
+        ? `${n} aula(s) com versão nova no AVA — marcadas com "atualizar". Rebaixe para atualizar.`
+        : "Nenhuma das aulas verificadas está desatualizada.");
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -513,7 +528,7 @@ export default function Acervo() {
       {aviso && <div className="aviso info">{aviso}</div>}
 
       {itens.length === 0 ? (
-        <div className="vazio">Nenhum conteudo baixado ainda.</div>
+        <div className="vazio">Nenhum conteúdo baixado ainda.</div>
       ) : (
         <>
           <div className="filtros">
@@ -532,7 +547,7 @@ export default function Acervo() {
                   type="text"
                   value={busca}
                   onChange={e => setBusca(e.target.value)}
-                  placeholder="id ou nome do conteudo"
+                  placeholder="id ou nome do conteúdo"
                 />
                 {busca && (
                   <button type="button" className="busca-limpar" title="Limpar busca" onClick={() => setBusca("")}>
@@ -549,7 +564,7 @@ export default function Acervo() {
               </select>
             </div>
             <div className="filtro">
-              <label>Serie</label>
+              <label>Série</label>
               <select value={fSerie} onChange={e => setFSerie(e.target.value)}>
                 <option value="">Todas</option>
                 {opcoesSerie.map(s => <option key={s} value={s}>{s}</option>)}
@@ -570,7 +585,7 @@ export default function Acervo() {
             <span className="contagem">
               {filtrados.length
                 ? `${inicio + 1}–${inicio + paginados.length} de ${filtrados.length}`
-                : "0"} conteudos
+                : "0"} conteúdos
               {(fTipo || fSegmento || fSerie || fAtualizacao || busca.trim()) ? ` (filtrado de ${itens.length})` : ""}
               {selecionados.size ? ` · ${selecionados.size} selecionada(s)` : ""}
             </span>
@@ -583,22 +598,22 @@ export default function Acervo() {
               <button className="primario" onClick={atualizarSelecionados} disabled={selecionados.size === 0}
                 title={selecionados.size === 0
                   ? "Selecione as aulas que deseja atualizar"
-                  : "Rebaixa as aulas selecionadas por cima (mesma acao do Catalogo) — traz a versao mais nova"}>
+                  : "Rebaixa as aulas selecionadas por cima (mesma ação do Catálogo) — traz a versão mais nova"}>
                 Atualizar{selecionados.size ? ` (${selecionados.size})` : ""}
               </button>
             )}
             <button onClick={verificar} disabled={verificando || atualizando || filtrados.length === 0}
               title={selecionados.size
-                ? "Verifica no AVA as aulas selecionadas (nao baixa nada)"
-                : "Nada selecionado: verifica TODAS as aulas listadas (nao baixa nada)"}>
+                ? "Verifica no AVA as aulas selecionadas (não baixa nada)"
+                : "Nada selecionado: verifica TODAS as aulas listadas (não baixa nada)"}>
               {verificando
                 ? "Verificando..."
-                : `Verificar atualizacões (${selecionados.size || filtrados.length})`}
+                : `Verificar atualizações (${selecionados.size || filtrados.length})`}
             </button>
             <button onClick={reindexar} disabled={reindexando || atualizando || filtrados.length === 0}
               title={selecionados.size
-                ? "Corrige serie, segmento e disciplina das aulas selecionadas — sem re-baixar"
-                : "Nada selecionado: corrige serie, segmento e disciplina de TODAS as aulas listadas — sem re-baixar"}>
+                ? "Corrige série, segmento e disciplina das aulas selecionadas — sem re-baixar"
+                : "Nada selecionado: corrige série, segmento e disciplina de TODAS as aulas listadas — sem re-baixar"}>
               {reindexando
                 ? "Corrigindo..."
                 : `Corrigir série e disciplina (${selecionados.size || filtrados.length})`}
@@ -614,18 +629,18 @@ export default function Acervo() {
                       type="checkbox"
                       checked={todosDaPaginaMarcados}
                       onChange={alternarTodosDaPagina}
-                      title="Selecionar todas as aulas desta pagina"
-                      aria-label="Selecionar todas as aulas desta pagina"
+                      title="Selecionar todas as aulas desta página"
+                      aria-label="Selecionar todas as aulas desta página"
                     />
                   </th>
-                  <th>ID</th>
-                  <th>Nome</th>
+                  <th className="col-esq">ID</th>
+                  <th className="col-esq">Nome</th>
                   <th>Identidade</th>
-                  <th>Serie(s)</th>
+                  <th>Série(s)</th>
                   <th>Formato</th>
-                  <th>Versao</th>
-                  <th>Paginas</th>
-                  <th>Atualizacao</th>
+                  <th>Versão</th>
+                  <th>Páginas</th>
+                  <th>Atualização</th>
                   <th></th>
                 </tr>
               </thead>
@@ -645,7 +660,7 @@ export default function Acervo() {
                           aria-label={`Selecionar ${item.nome}`}
                         />
                       </td>
-                      <td>{item.id}</td>
+                      <td className="col-esq">{item.id}</td>
                       <td className="nome">{item.nome}</td>
                       <td>{selosDeIdentidade(item)}</td>
                       <td>{series.length ? series.join(", ") : <span style={{ color: "var(--txt-2)" }}>—</span>}</td>
@@ -656,7 +671,7 @@ export default function Acervo() {
                             aberto={expandido === `${item.id}:versao`}
                             onAlternar={() => setExpandido(expandido === `${item.id}:versao` ? null : `${item.id}:versao`)}
                             resumo={`${paginas.length} ${paginas.length === 1 ? "pag" : "pags"}`}
-                            titulo="Versao publicada de cada pagina (clique para ver)"
+                            titulo="Versão publicada de cada página (clique para ver)"
                             linhas={paginas.map(p => ({
                               chave: p.ordem,
                               rotulo: `P${p.ordem}`,
@@ -678,7 +693,7 @@ export default function Acervo() {
                             alerta={faltantes > 0}
                             titulo={faltantes > 0
                               ? `${faltantes} página(s) não baixada(s) — formato incompatível`
-                              : "LO (external_id) de cada pagina (clique para ver)"}
+                              : "LO (external_id) de cada página (clique para ver)"}
                             linhas={paginas.map(p => ({
                               chave: p.ordem,
                               rotulo: `P${p.ordem}`,
@@ -732,7 +747,7 @@ export default function Acervo() {
           )}
 
           {filtrados.length === 0 && (
-            <div className="vazio">Nenhum conteudo do acervo bate com este filtro.</div>
+            <div className="vazio">Nenhum conteúdo do acervo bate com este filtro.</div>
           )}
         </>
       )}

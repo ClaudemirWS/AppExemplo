@@ -1,15 +1,25 @@
 :root {
-  --bg: #16181d;
-  --bg-2: #1e2127;
-  --bg-3: #262a32;
-  --linha: #313640;
-  --txt: #e7e9ee;
-  --txt-2: #9aa1ad;
+  /* Fundo noturno com leve tom frio (azulado) — mais moderno que cinza puro. */
+  --bg: #0d1220;
+  --bg-2: #151b2b;
+  --bg-3: #1d2536;
+  --bg-4: #26304428;
+  --linha: #2b3448;
+  --linha-forte: #3a4560;
+  --txt: #e8ebf2;
+  --txt-2: #98a2b8;
   --acento: #4c8dff;
+  --acento-2: #3a7bff;
+  /* Azul de marca Educandus (do simbolo) — usado no cabecalho. */
+  --marca: #0b2d5e;
+  --marca-2: #0a468f;
   --verde: #46c46a;
   --amarelo: #e0b53a;
   --vermelho: #e0603a;
   --cinza: #6b7280;
+  --raio: 10px;
+  --raio-sm: 7px;
+  --sombra: 0 8px 28px rgba(0, 0, 0, 0.35);
 }
 
 * { box-sizing: border-box; }
@@ -18,244 +28,298 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--txt);
-  font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 button {
   font: inherit;
   cursor: pointer;
-  border: 1px solid var(--linha);
+  border: 1px solid var(--linha-forte);
   background: var(--bg-3);
   color: var(--txt);
-  padding: 7px 14px;
-  border-radius: 7px;
-  transition: filter .12s, background .12s;
+  padding: 8px 15px;
+  border-radius: var(--raio-sm);
+  transition: background .14s, border-color .14s, filter .14s, transform .05s;
 }
-button:hover:not(:disabled) { filter: brightness(1.18); }
-button:disabled { opacity: .45; cursor: default; }
-button.primario { background: var(--acento); border-color: var(--acento); color: #fff; font-weight: 600; }
+button:hover:not(:disabled) { background: var(--bg-4); border-color: var(--linha-forte); filter: brightness(1.12); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: .4; cursor: default; }
+button:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+button.primario {
+  background: var(--acento); border-color: var(--acento); color: #fff; font-weight: 600;
+}
+button.primario:hover:not(:disabled) { background: var(--acento-2); border-color: var(--acento-2); filter: none; }
 
 input, select {
   font: inherit;
   background: var(--bg-2);
   color: var(--txt);
   border: 1px solid var(--linha);
-  border-radius: 7px;
-  padding: 7px 10px;
+  border-radius: var(--raio-sm);
+  padding: 8px 11px;
+  transition: border-color .14s, box-shadow .14s;
+}
+input:focus, select:focus {
+  outline: none; border-color: var(--acento);
+  box-shadow: 0 0 0 3px rgba(76, 141, 255, 0.18);
 }
 
-.app { max-width: 1200px; margin: 0 auto; padding: 20px; }
-
-.topo {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1px solid var(--linha);
+/* ---------- CABECALHO (barra de marca, full-width) ---------- */
+.cabecalho {
+  position: sticky; top: 0; z-index: 50;
+  background: linear-gradient(180deg, #12224180, transparent), var(--bg-2);
+  border-bottom: 1px solid var(--linha);
+  box-shadow: 0 1px 0 #ffffff08, 0 6px 20px rgba(0, 0, 0, 0.25);
 }
-.topo h1 { font-size: 18px; margin: 0; }
-.topo .usuario { color: var(--txt-2); font-size: 13px; }
+.cabecalho-inner {
+  max-width: 1200px; margin: 0 auto; padding: 12px 20px;
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+}
+.marca { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.marca-logo { height: 23px; width: auto; display: block; opacity: .96; }
+.marca-divisor { width: 1px; height: 20px; background: var(--linha-forte); flex: none; }
+.marca-tag {
+  font-size: 13px; font-weight: 600; letter-spacing: .3px; color: var(--txt-2);
+  text-transform: uppercase;
+}
+.cabecalho-user { display: flex; align-items: center; gap: 12px; flex: none; }
+.cabecalho-user .usuario { color: var(--txt-2); font-size: 13px; }
+.btn-sair { background: transparent; border-color: var(--linha-forte); padding: 6px 14px; }
 
-.abas { display: flex; gap: 6px; margin-bottom: 16px; }
-.abas button.ativa { background: var(--acento); border-color: var(--acento); color: #fff; }
+/* ---------- LAYOUT ---------- */
+.app { max-width: 1200px; margin: 0 auto; padding: 22px 20px 40px; }
 
-/* Login */
+/* ---------- ABAS (segmented control) ---------- */
+.abas {
+  display: inline-flex; gap: 4px; margin-bottom: 20px;
+  background: var(--bg-2); border: 1px solid var(--linha); border-radius: var(--raio); padding: 4px;
+}
+.abas button {
+  border: 0; background: transparent; color: var(--txt-2); font-weight: 600;
+  padding: 7px 16px; border-radius: var(--raio-sm);
+}
+.abas button:hover:not(.ativa) { background: var(--bg-3); filter: none; color: var(--txt); }
+.abas button.ativa { background: var(--acento); color: #fff; box-shadow: 0 2px 8px rgba(76, 141, 255, 0.35); }
+
+/* ---------- LOGIN ---------- */
+.login-tela {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  background:
+    radial-gradient(900px 500px at 50% -10%, #16305e40, transparent),
+    var(--bg);
+}
 .login-caixa {
-  max-width: 360px; margin: 12vh auto 0; background: var(--bg-2);
-  padding: 28px; border-radius: 12px; border: 1px solid var(--linha);
+  width: 100%; max-width: 380px; background: var(--bg-2);
+  padding: 32px 30px; border-radius: 16px; border: 1px solid var(--linha);
+  box-shadow: var(--sombra);
 }
-.login-caixa h1 { font-size: 20px; margin: 0 0 4px; }
-.login-caixa p { color: var(--txt-2); margin: 0 0 20px; font-size: 13px; }
-.campo { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
-.campo label { font-size: 12px; color: var(--txt-2); }
+.login-marca { display: flex; justify-content: center; margin-bottom: 28px; }
+.login-logo { height: 40px; width: auto; opacity: .97; }
+.campo { display: flex; flex-direction: column; gap: 6px; margin-bottom: 15px; }
+.campo label { font-size: 12px; color: var(--txt-2); font-weight: 500; }
 .campo input { width: 100%; }
+.login-entrar { width: 100%; margin-top: 6px; padding: 10px; }
 
-.filtros { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 14px; }
-.filtro { display: flex; flex-direction: column; gap: 5px; }
-.filtro label { font-size: 12px; color: var(--txt-2); }
+/* ---------- FILTROS ---------- */
+.filtros {
+  display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;
+  padding: 14px 16px; background: var(--bg-2); border: 1px solid var(--linha); border-radius: var(--raio);
+}
+.filtro { display: flex; flex-direction: column; gap: 6px; }
+.filtro label { font-size: 12px; color: var(--txt-2); font-weight: 500; }
 .filtro select, .filtro input { min-width: 160px; }
 
-/* Busca por id/nome no acervo: input com botao de limpar sobreposto. */
+/* Busca por id/nome: input com botao de limpar sobreposto. */
 .filtro-busca .busca-wrap { position: relative; display: inline-flex; }
-.filtro-busca input { min-width: 240px; padding-right: 26px; }
+.filtro-busca input { min-width: 240px; padding-right: 28px; }
 .busca-limpar {
   position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
   background: transparent; border: 0; color: var(--txt-2); cursor: pointer;
   font-size: 18px; line-height: 1; padding: 0 4px;
 }
-.busca-limpar:hover { color: var(--txt-1); }
+.busca-limpar:hover { color: var(--txt); background: transparent; }
 
+/* ---------- BARRA DE ACAO (contagem + botoes) ---------- */
 .barra-acao {
-  display: flex; align-items: center; gap: 12px; margin-bottom: 12px;
-  padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--linha); border-radius: 8px;
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  padding: 11px 14px; background: var(--bg-2); border: 1px solid var(--linha); border-radius: var(--raio);
 }
 .barra-acao .contagem { color: var(--txt-2); font-size: 13px; }
 .barra-acao .espaco { flex: 1; }
 
-/* Paginacao do acervo (10 por pagina): anterior / indicador / proxima. */
-.paginacao {
-  display: flex; align-items: center; justify-content: center; gap: 14px;
-  margin-top: 14px;
-}
+/* ---------- PAGINACAO ---------- */
+.paginacao { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; }
 .paginacao-indicador { color: var(--txt-2); font-size: 13px; min-width: 130px; text-align: center; }
 
-.aviso { padding: 8px 12px; border-radius: 7px; font-size: 13px; margin-bottom: 12px; }
-.aviso.erro { background: #3a1f1a; border: 1px solid var(--vermelho); color: #ffb9a3; }
-.aviso.info { background: #1a2a3a; border: 1px solid var(--acento); color: #a3d0ff; }
+/* ---------- AVISOS ---------- */
+.aviso { padding: 10px 14px; border-radius: var(--raio-sm); font-size: 13px; margin-bottom: 14px; }
+.aviso.erro { background: #33191280; border: 1px solid #7a3323; color: #ffb9a3; }
+.aviso.info { background: #14273c80; border: 1px solid #2f5a86; color: #a3d0ff; }
 
-.tabela-wrap { overflow-x: auto; border: 1px solid var(--linha); border-radius: 8px; }
+/* ---------- TABELA ---------- */
+.tabela-wrap {
+  overflow-x: auto; border: 1px solid var(--linha); border-radius: var(--raio);
+  background: var(--bg-2);
+}
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--linha); white-space: nowrap; }
+th, td {
+  text-align: left; padding: 10px 9px; border-bottom: 1px solid var(--linha); white-space: nowrap;
+  vertical-align: middle;
+}
+/* Colunas de "chips" (Identidade, Serie, Formato, Versao, Paginas, Atualizacao, Acoes)
+   ficam CENTRALIZADAS — alinham sob o cabecalho e dao aspecto de grade organizada.
+   ID e Nome permanecem a esquerda (o bloco de leitura), via .col-esq. */
+.tabela-wrap th, .tabela-wrap td { text-align: center; }
+.tabela-wrap td.nome, .tabela-wrap .col-esq { text-align: left; }
 /* Altura de linha UNIFORME entre Catalogo e Acervo. O Acervo e naturalmente mais alto
    (coluna Identidade empilhada: #ext sobre "Convertido"); esta altura minima replica
    essa mesma medida nas linhas do Catalogo, que so tem texto de 1 linha. Aplicada ao
    <td> do corpo (min-height nao vale em celula de tabela; `height` age como minimo). */
-tbody td { height: 56px; }
-th { background: var(--bg-3); color: var(--txt-2); font-weight: 600; font-size: 12px; position: sticky; top: 0; }
-td.nome { white-space: normal; min-width: 280px; }
-tr:hover td { background: var(--bg-2); }
+tbody td { height: 58px; }
+tbody tr:last-child td { border-bottom: 0; }
+th {
+  background: var(--bg-3); color: var(--txt-2); font-weight: 600; font-size: 11px;
+  letter-spacing: .4px; text-transform: uppercase; position: sticky; top: 0;
+}
+td.nome { white-space: normal; min-width: 150px; font-weight: 500; }
+tbody tr { transition: background .1s; }
+tr:hover td { background: var(--bg-3); }
 tr.indisponivel td { color: var(--txt-2); }
 td.check { width: 34px; text-align: center; }
 input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--acento); cursor: pointer; }
 
-.selo { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; }
-.selo.desconhecido { background: var(--bg-3); color: var(--txt-2); }
-.selo.construct2 { background: #2a2340; color: #c9b3ff; }
-.selo.construct3 { background: #1f3320; color: #a7e6ac; }
-.selo.animate { background: #33261a; color: #f0c89a; }
-.selo.html { background: #1a2e33; color: #9adfe6; }
-.selo.flash { background: #3a1f1a; color: #ffb9a3; }
-.selo.valberto { background: #2e2a1a; color: #e6d79a; }
-.selo.ok { background: #1f3320; color: #a7e6ac; }
-.selo.erro { background: #3a1f1a; color: #ffb9a3; }
-.selo.baixando { background: #1a2a3a; color: #a3d0ff; }
+/* ---------- SELOS (pills) ---------- */
+.selo {
+  display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  border: 1px solid transparent; line-height: 1.4;
+}
+.selo.desconhecido { background: var(--bg-3); color: var(--txt-2); border-color: var(--linha); }
+.selo.construct2 { background: #2a234099; color: #c9b3ff; border-color: #443466; }
+.selo.construct3 { background: #1f332099; color: #a7e6ac; border-color: #2f5f38; }
+.selo.animate   { background: #33261a99; color: #f0c89a; border-color: #63492b; }
+.selo.html      { background: #1a2e3399; color: #9adfe6; border-color: #2c5860; }
+.selo.flash     { background: #3a1f1a99; color: #ffb9a3; border-color: #6b3324; }
+.selo.valberto  { background: #2e2a1a99; color: #e6d79a; border-color: #5c5330; }
+.selo.ok        { background: #1f332099; color: #a7e6ac; border-color: #2f5f38; }
+.selo.erro      { background: #3a1f1a99; color: #ffb9a3; border-color: #6b3324; }
+.selo.baixando  { background: #1a2a3a99; color: #a3d0ff; border-color: #2f5a86; }
 
-/* Coluna "Acervo" do catalogo: indica quem ja foi baixado. Mesmo formato pill dos
-   selos de formato, no verde do acervo. Quem nao esta baixado mostra so um traco
-   discreto (nao compete visualmente com os baixados). */
+/* Coluna "Acervo" do catalogo: quem ja foi baixado. Quem nao esta, so um traco. */
 .col-acervo { white-space: nowrap; }
 .selo-baixado {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
   background: #17301b; color: #7fdd90; border: 1px solid #2f6b3a;
 }
 .selo-indisp {
   display: inline-flex; align-items: center; gap: 4px;
-  padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
-  background: #34190f; color: #ffb9a3; border: 1px solid #6b3324;
-  cursor: help;
+  padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600;
+  background: #34190f; color: #ffb9a3; border: 1px solid #6b3324; cursor: help;
 }
-.traco-acervo { color: var(--txt-2); opacity: .5; }
+.traco-acervo { color: var(--txt-2); opacity: .45; }
 
-/* Identidade tecnica: external_id + selo Construct/Flash. Serve para distinguir
-   duas aulas de mesmo nome (a Flash antiga da Construct nova).
+/* ---------- IDENTIDADE (external_id + Construct/Flash) ----------
    EMPILHADO SEMPRE (column), nunca "lado a lado ou quebra conforme o espaco": com
    flex-wrap, a largura variavel da coluna entre paginas fazia a Identidade quebrar
    em 2 linhas numa pagina e caber em 1 noutra — mudando a altura da linha (e da
    pagina). Fixar a direcao em coluna torna a celula com a MESMA altura em toda pagina. */
-.identidade { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.identidade { display: inline-flex; flex-direction: column; align-items: center; gap: 5px; }
 .identidade .ext {
-  font-family: ui-monospace, monospace; font-size: 11px; color: var(--txt-2);
-  background: var(--bg-3); padding: 1px 6px; border-radius: 4px; cursor: help;
+  font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11px; color: var(--txt-2);
+  background: var(--bg-3); padding: 2px 7px; border-radius: 5px; cursor: help; border: 1px solid var(--linha);
 }
 
-/* Celula expansivel (colunas Versao e Paginas): resumo clicavel ("5 pags ▼") que
-   abre a lista por pagina (P1 - v4, ou P1: <LO>) numa JANELINHA FLUTUANTE — nao
-   estica a linha da tabela. O popover e position:absolute ancorado no wrap. */
+/* ---------- CELULA EXPANSIVEL (Versao / Paginas) ---------- */
 .col-expansivel { vertical-align: middle; }
 .exp-wrap { position: relative; display: inline-block; }
 .exp-resumo {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: var(--bg-3); color: var(--txt-1); border: 0; cursor: pointer;
-  font-size: 12px; padding: 2px 8px; border-radius: 6px;
+  display: inline-flex; align-items: center; gap: 5px;
+  background: var(--bg-3); color: var(--txt); border: 1px solid var(--linha); cursor: pointer;
+  font-size: 12px; padding: 4px 9px; border-radius: 6px; transition: border-color .12s, background .12s;
 }
-.exp-resumo:hover { filter: brightness(1.2); }
-.exp-resumo[aria-expanded="true"] { outline: 1px solid var(--linha); }
+.exp-resumo:hover { background: var(--bg-4); border-color: var(--linha-forte); }
+.exp-resumo[aria-expanded="true"] { border-color: var(--acento); }
 .exp-seta { font-size: 8px; color: var(--txt-2); }
 .exp-lista {
-  /* position:fixed + top/left inline (via JS) — escapa do .tabela-wrap com overflow,
-     sem gerar barra de rolagem. */
-  position: fixed;
-  z-index: 100;
-  min-width: 120px;
-  max-height: 240px;
-  overflow-y: auto;
-  list-style: none; margin: 0; padding: 6px;
+  position: fixed; z-index: 100; min-width: 130px; max-height: 240px; overflow-y: auto;
+  list-style: none; margin: 0; padding: 7px;
   display: flex; flex-direction: column; gap: 3px;
-  background: var(--bg-2);
-  border: 1px solid var(--linha);
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  background: var(--bg-2); border: 1px solid var(--linha-forte); border-radius: var(--raio);
+  box-shadow: var(--sombra);
 }
-.exp-lista li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; white-space: nowrap; }
+.exp-lista li { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; white-space: nowrap; padding: 2px 4px; border-radius: 4px; }
 .exp-rotulo { color: var(--txt-2); min-width: 22px; }
 .exp-valor { font-family: ui-monospace, monospace; color: #a7e6ac; }
-
-/* Pagina que nao baixou (formato incompativel): alerta ambar no resumo e na linha. */
-.exp-resumo-alerta { color: #ffcf9a; }
+.exp-resumo-alerta { color: #ffcf9a; border-color: #63492b; }
 .exp-aviso { font-size: 11px; }
 .exp-lista li.exp-faltante { color: #ffb9a3; cursor: help; }
 .exp-lista li.exp-faltante .exp-rotulo { color: #ffb9a3; }
 .exp-lista li.exp-faltante .exp-valor { color: #ffb9a3; white-space: normal; }
 
-/* Fila */
-.fila { background: var(--bg-2); border: 1px solid var(--linha); border-radius: 8px; padding: 14px; margin-bottom: 16px; }
+/* ---------- FILA / PROGRESSO ---------- */
+.fila { background: var(--bg-2); border: 1px solid var(--linha); border-radius: var(--raio); padding: 14px; margin-bottom: 16px; }
 .fila h3 { margin: 0 0 10px; font-size: 14px; }
 .fila-item { display: flex; align-items: center; gap: 10px; padding: 5px 0; font-size: 13px; }
 .fila-item .fnome { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .progresso { width: 120px; height: 7px; background: var(--bg-3); border-radius: 4px; overflow: hidden; }
-.progresso i { display: block; height: 100%; background: var(--acento); transition: width .2s; }
+.progresso i { display: block; height: 100%; background: linear-gradient(90deg, var(--acento-2), var(--acento)); transition: width .2s; }
+.barra-selo { display: inline-flex; align-items: center; gap: 6px; }
+.barra-selo .progresso { width: 60px; }
+.barra-selo .pct { font-size: 12px; color: var(--txt-2); min-width: 32px; }
 
-.barra-selo { display: inline-flex; align-items: center; gap: 8px; }
-.barra-selo .progresso { width: 90px; }
-.barra-selo .pct { font-size: 12px; color: var(--txt-2); min-width: 42px; }
-
-/* Coluna de acoes com dois botoes (baixar estrutura + apagar). Botoes quadrados
-   com cantos arredondados, PREENCHIDOS com a cor da acao ja em repouso (azul=baixar,
-   vermelho=apagar) e icone branco — os antigos eram emoji transparente, quase
-   invisiveis. Base comum em .acao-icone; cada classe define a cor solida. */
-/* Largura FIXA das duas ultimas colunas: sem isto, quando "Atualizacao" carrega o
-   bloco (selo + data) numa pagina e so "—" noutra, a tabela cresce alem do container
-   naquela pagina e a coluna de acoes "escapa" para a direita (o vazio do overflow). */
-td.col-atualizacao, th:nth-last-child(2) { width: 108px; }
-td.col-acoes { width: 92px; white-space: nowrap; }
+/* ---------- COLUNAS FIXAS (Atualizacao + Acoes) ----------
+   Largura FIXA: sem isto, quando "Atualizacao" carrega o bloco (selo + data) numa
+   pagina e so "—" noutra, a tabela cresce alem do container e a coluna de acoes
+   "escapa" para a direita (o vazio do overflow). */
+td.col-atualizacao, th:nth-last-child(2) { width: 96px; }
+td.col-acoes { width: 84px; white-space: nowrap; }
 /* O flex vive no DIV interno — um <td> com display:flex sai do algoritmo de largura
    da tabela e desestabiliza as colunas vizinhas. */
-.acoes-linha { display: flex; gap: 8px; justify-content: center; align-items: center; }
+.acoes-linha { display: flex; gap: 6px; justify-content: center; align-items: center; }
 
 .acao-icone {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 32px; height: 32px; padding: 0; font-size: 16px; line-height: 1;
-  border-radius: 8px; border: 1px solid transparent; color: #fff; cursor: pointer;
-  transition: background .12s, border-color .12s, transform .05s, box-shadow .12s;
+  width: 31px; height: 31px; padding: 0; line-height: 1;
+  border-radius: 9px; border: 1px solid transparent; color: #fff; cursor: pointer;
+  transition: background .12s, box-shadow .12s, transform .05s;
 }
 .acao-icone:hover:not(:disabled) { transform: translateY(-1px); }
 .acao-icone:active:not(:disabled) { transform: translateY(0); }
 .acao-icone:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .acao-icone:disabled { opacity: .5; cursor: default; }
-
 .baixar-estrutura { background: var(--acento); }
-.baixar-estrutura:hover:not(:disabled) {
-  background: #3a7bff; box-shadow: 0 2px 8px rgba(76, 141, 255, .4);
-}
+.baixar-estrutura:hover:not(:disabled) { background: var(--acento-2); box-shadow: 0 3px 10px rgba(76, 141, 255, .45); }
 .lixeira { background: var(--vermelho); }
-.lixeira:hover:not(:disabled) {
-  background: #d24d27; box-shadow: 0 2px 8px rgba(224, 96, 58, .4);
-}
+.lixeira:hover:not(:disabled) { background: #d24d27; box-shadow: 0 3px 10px rgba(224, 96, 58, .45); }
 
 /* Spinner branco enquanto apaga (substitui o icone da lixeira). */
 .spin-acao {
   width: 15px; height: 15px; border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff;
-  animation: spin-acao .6s linear infinite;
+  animation: girar .6s linear infinite;
 }
-@keyframes spin-acao { to { transform: rotate(360deg); } }
 
-.vazio { padding: 40px; text-align: center; color: var(--txt-2); }
-.carregando { padding: 30px; text-align: center; color: var(--txt-2); }
-
-/* Coluna de selecao (checkbox) — estreita e centralizada. */
+/* ---------- SELECAO ---------- */
 .col-check { width: 34px; text-align: center; }
-tr.linha-selecionada td { background: rgba(76, 141, 255, 0.08); }
+tr.linha-selecionada td { background: rgba(76, 141, 255, 0.1); }
+tr.linha-selecionada:hover td { background: rgba(76, 141, 255, 0.14); }
 
-/* Coluna "Atualizacao": selo da situacao + data da ultima verificacao, empilhados. */
-.atualizacao-bloco { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+/* ---------- COLUNA ATUALIZACAO ---------- */
+.atualizacao-bloco { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
 .atualizacao-data { color: var(--txt-2); font-size: 10px; line-height: 1; white-space: nowrap; }
-.atualizacao-nunca { color: var(--txt-2); opacity: 0.5; cursor: help; }
+.atualizacao-nunca { color: var(--txt-2); opacity: 0.45; cursor: help; }
+
+/* ---------- ESTADOS VAZIOS / CARREGANDO ---------- */
+.vazio { padding: 48px; text-align: center; color: var(--txt-2); }
+.carregando { padding: 32px; text-align: center; color: var(--txt-2); }
+.tela-carregando {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center; gap: 10px;
+  color: var(--txt-2); background: var(--bg);
+}
+.spin {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid var(--linha-forte); border-top-color: var(--acento);
+  animation: girar .6s linear infinite; display: inline-block;
+}
+@keyframes girar { to { transform: rotate(360deg); } }

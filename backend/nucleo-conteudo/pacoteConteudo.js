@@ -76,7 +76,7 @@ async function baixarPaginaPorPublicador(pagina, conteudoId, onProgresso, opcoes
   const conteudoBaixado = await baixarTexto(versao.url, opcoes);
 
   if (!conteudoBaixado.texto.trim().startsWith("<")) {
-    throw new Error("HTML inicial do publicador invalido.");
+    throw new Error("HTML inicial do publicador inválido.");
   }
 
   const formato = detectarFormato(conteudoBaixado.texto, extrairRecursosHtml(conteudoBaixado.texto));

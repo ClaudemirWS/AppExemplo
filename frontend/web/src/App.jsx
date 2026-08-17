@@ -12,7 +12,7 @@ export default function App() {
 
   useEffect(() => {
     api.health()
-      .then(h => { if (h.autenticado) setSessao({ usuario: "(sessao ativa)", papel: "" }); })
+      .then(h => { if (h.autenticado) setSessao({ usuario: "(sessão ativa)", papel: "" }); })
       .catch(() => {})
       .finally(() => setVerificando(false));
   }, []);
@@ -23,7 +23,7 @@ export default function App() {
   }
 
   if (verificando) {
-    return <div className="carregando">Carregando...</div>;
+    return <div className="tela-carregando"><span className="spin" /> Carregando...</div>;
   }
 
   if (!sessao) {
@@ -31,25 +31,35 @@ export default function App() {
   }
 
   return (
-    <div className="app">
-      <div className="topo">
-        <h1>Acervo Educandus</h1>
-        <div>
-          <span className="usuario">{sessao.usuario}{sessao.papel ? ` · ${sessao.papel}` : ""}</span>
-          <button style={{ marginLeft: 12 }} onClick={sair}>Sair</button>
+    <>
+      <header className="cabecalho">
+        <div className="cabecalho-inner">
+          <div className="marca">
+            <img className="marca-logo" src="/logo-educandus-branco.png" alt="Educandus" />
+            <span className="marca-divisor" aria-hidden="true" />
+            <span className="marca-tag">Acervo</span>
+          </div>
+          <div className="cabecalho-user">
+            <span className="usuario">
+              {sessao.usuario}{sessao.papel ? ` · ${sessao.papel}` : ""}
+            </span>
+            <button className="btn-sair" onClick={sair}>Sair</button>
+          </div>
         </div>
-      </div>
+      </header>
 
-      <div className="abas">
-        <button className={aba === "catalogo" ? "ativa" : ""} onClick={() => setAba("catalogo")}>
-          Catalogo
-        </button>
-        <button className={aba === "acervo" ? "ativa" : ""} onClick={() => setAba("acervo")}>
-          Acervo baixado
-        </button>
-      </div>
+      <main className="app">
+        <nav className="abas" aria-label="Seções">
+          <button className={aba === "catalogo" ? "ativa" : ""} onClick={() => setAba("catalogo")}>
+            Catálogo
+          </button>
+          <button className={aba === "acervo" ? "ativa" : ""} onClick={() => setAba("acervo")}>
+            Acervo baixado
+          </button>
+        </nav>
 
-      {aba === "catalogo" ? <Catalogo /> : <Acervo />}
-    </div>
+        {aba === "catalogo" ? <Catalogo /> : <Acervo />}
+      </main>
+    </>
   );
 }

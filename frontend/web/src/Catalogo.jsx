@@ -9,9 +9,23 @@ const SERIE_PADRAO = "3º Ano EF";
 
 const OPCAO_TODOS = { id: "", nome: "Todos" };
 
+// Rotulo AMIGAVEL do formato (so exibicao — nao altera a deteccao nem os dados).
+const ROTULO_FORMATO = {
+  "construct2": "Construct 2",
+  "construct3": "Construct 3",
+  "animate-autonomo": "Animate",
+  "html-modelo-classico": "HTML-Script",
+  "html-moderno": "HTML-Unificado",
+  "html-educandus": "HTML-Educandus",
+  "html": "HTML"
+};
+function rotuloFormato(f) {
+  return ROTULO_FORMATO[String(f || "").toLowerCase()] || f;
+}
+
 function selosDeLista(lista) {
   return lista.map((f, i) => (
-    <span key={i} className={`selo ${classeFormato(f)}`} style={{ marginRight: 4 }}>{f}</span>
+    <span key={i} className={`selo ${classeFormato(f)}`} style={{ marginRight: 4 }} title={f}>{rotuloFormato(f)}</span>
   ));
 }
 
@@ -48,7 +62,7 @@ function seloFormato(item, estadoDownload, baixado) {
     return <span className="selo desconhecido">cancelado</span>;
   }
   if (estadoDownload?.status === "indisponivel") {
-    return <span className="selo flash" title={estadoDownload.motivo}>indisponivel</span>;
+    return <span className="selo flash" title={estadoDownload.motivo}>indisponível</span>;
   }
   if (item.motivoIndisponivel) {
     return <span className="selo flash" title={item.motivoIndisponivel}>Flash</span>;
@@ -57,7 +71,7 @@ function seloFormato(item, estadoDownload, baixado) {
     return <span className="selo valberto">Valberto</span>;
   }
   // Formato tecnico so e conhecido apos baixar (decisao do projeto).
-  return <span className="selo desconhecido">desconhecido</span>;
+  return <span className="selo desconhecido">Desconhecido</span>;
 }
 
 function classeFormato(f) {
@@ -288,7 +302,7 @@ export default function Catalogo() {
     <>
       <div className="filtros">
         <div className="filtro">
-          <label>Tipo de conteudo</label>
+          <label>Tipo de conteúdo</label>
           <select value={tipo} onChange={e => setTipo(e.target.value)}>
             <option value="1">Aula</option>
             <option value="2">Jogo</option>
@@ -302,7 +316,7 @@ export default function Catalogo() {
           </select>
         </div>
         <div className="filtro">
-          <label>Serie</label>
+          <label>Série</label>
           <select value={serie} onChange={e => setSerie(e.target.value)} disabled={!segmento}>
             <option value="">Todas</option>
             {seriesDoSegmento.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
@@ -329,21 +343,21 @@ export default function Catalogo() {
       {erro && <div className="aviso erro">{erro}</div>}
       {meta?.truncado && (
         <div className="aviso info">
-          Varredura truncada na trava de seguranca ({meta.paginasLidas} paginas). Refine o filtro.
+          Varredura truncada na trava de segurança ({meta.paginasLidas} páginas). Refine o filtro.
         </div>
       )}
 
       {baixando && progressoFila && (
         <div className="aviso info">
-          Baixando {progressoFila.atual} de {progressoFila.total} · {progressoFila.concluidos} concluidos.
-          Aulas grandes (muitas paginas Construct) levam alguns minutos cada.
+          Baixando {progressoFila.atual} de {progressoFila.total} · {progressoFila.concluidos} concluídos.
+          Aulas grandes (muitas páginas Construct) levam alguns minutos cada.
         </div>
       )}
 
       {itens && (
         <div className="barra-acao">
           <span className="contagem">
-            {itens.length} conteudos · {baixaveis.length} baixaveis · {marcados.size} marcados
+            {itens.length} conteúdos · {baixaveis.length} baixáveis · {marcados.size} marcados
             {totalPaginas > 1 ? ` · pag. ${paginaAtual}/${totalPaginas}` : ""}
           </span>
           <div className="espaco" />
@@ -354,7 +368,7 @@ export default function Catalogo() {
             className={temBaixadoMarcado ? "" : "primario"}
             onClick={baixarSelecionados}
             disabled={!marcados.size || baixando}
-            title={temBaixadoMarcado ? "Ha itens ja baixados na selecao — serao rebaixados por cima" : ""}
+            title={temBaixadoMarcado ? "Há itens já baixados na seleção — serão rebaixados por cima" : ""}
           >
             {baixando
               ? "Baixando..."
@@ -370,11 +384,11 @@ export default function Catalogo() {
         </div>
       )}
 
-      {carregando && <div className="carregando">Varrendo o catalogo (todas as paginas)...</div>}
+      {carregando && <div className="carregando">Varrendo o catálogo (todas as páginas)...</div>}
 
       {itens && !carregando && (
         itens.length === 0 ? (
-          <div className="vazio">Nenhum conteudo para este filtro.</div>
+          <div className="vazio">Nenhum conteúdo para este filtro.</div>
         ) : (
           <div className="tabela-wrap">
             <table>
@@ -383,9 +397,9 @@ export default function Catalogo() {
                   <th className="check">
                     <input type="checkbox" checked={todosMarcados} onChange={alternarTodos} />
                   </th>
-                  <th>ID</th>
-                  <th>Nome</th>
-                  <th>Serie</th>
+                  <th className="col-esq">ID</th>
+                  <th className="col-esq">Nome</th>
+                  <th>Série</th>
                   <th>Habilidade</th>
                   <th>Formato</th>
                   <th>Acervo</th>
@@ -402,21 +416,21 @@ export default function Catalogo() {
                         <input type="checkbox" disabled={!podeBaixar}
                           checked={marcados.has(item.id)} onChange={() => alternar(item.id)} />
                       </td>
-                      <td>{item.id}</td>
+                      <td className="col-esq">{item.id}</td>
                       <td className="nome">{item.nome}</td>
                       <td>{item.serieNome || "-"}</td>
                       <td>{item.habilidade || "-"}</td>
                       <td>{seloFormato(item, estados[item.id], baixados.get(String(item.id)))}</td>
                       <td className="col-acervo">
                         {estaBaixado ? (
-                          <span className="selo-baixado" title="Ja esta no acervo">no acervo</span>
+                          <span className="selo-baixado" title="Já está no acervo">no acervo</span>
                         ) : indisp ? (
                           <span className="selo-indisp"
                             title="Por algum motivo esta aula foi impossível de guardar, você pode tentar novamente.">
                             indisponível
                           </span>
                         ) : (
-                          <span className="traco-acervo" title="Ainda nao baixado">—</span>
+                          <span className="traco-acervo" title="Ainda não baixado">—</span>
                         )}
                       </td>
                     </tr>
@@ -441,7 +455,7 @@ export default function Catalogo() {
       )}
 
       {!itens && !carregando && (
-        <div className="vazio">Escolha um filtro e clique em Listar para varrer o catalogo.</div>
+        <div className="vazio">Escolha um filtro e clique em Listar para varrer o catálogo.</div>
       )}
     </>
   );
