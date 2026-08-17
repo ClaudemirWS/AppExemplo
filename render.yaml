@@ -49,10 +49,11 @@ services:
         sync: false
 
   # ---------- FRONTEND (Vite/React, estatico) ----------
+  # Static site: type:web + runtime:static, SEM `plan` — sites estaticos sao
+  # gratuitos e nao aceitam o campo plan (senao: "no such plan free for service type web").
   - type: web
     name: acervo-frontend
     runtime: static
-    plan: free
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
