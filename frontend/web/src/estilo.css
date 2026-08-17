@@ -103,6 +103,11 @@ input, select {
 .tabela-wrap { overflow-x: auto; border: 1px solid var(--linha); border-radius: 8px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--linha); white-space: nowrap; }
+/* Altura de linha UNIFORME entre Catalogo e Acervo. O Acervo e naturalmente mais alto
+   (coluna Identidade empilhada: #ext sobre "Convertido"); esta altura minima replica
+   essa mesma medida nas linhas do Catalogo, que so tem texto de 1 linha. Aplicada ao
+   <td> do corpo (min-height nao vale em celula de tabela; `height` age como minimo). */
+tbody td { height: 56px; }
 th { background: var(--bg-3); color: var(--txt-2); font-weight: 600; font-size: 12px; position: sticky; top: 0; }
 td.nome { white-space: normal; min-width: 280px; }
 tr:hover td { background: var(--bg-2); }
@@ -140,8 +145,12 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--acento); c
 .traco-acervo { color: var(--txt-2); opacity: .5; }
 
 /* Identidade tecnica: external_id + selo Construct/Flash. Serve para distinguir
-   duas aulas de mesmo nome (a Flash antiga da Construct nova). */
-.identidade { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+   duas aulas de mesmo nome (a Flash antiga da Construct nova).
+   EMPILHADO SEMPRE (column), nunca "lado a lado ou quebra conforme o espaco": com
+   flex-wrap, a largura variavel da coluna entre paginas fazia a Identidade quebrar
+   em 2 linhas numa pagina e caber em 1 noutra — mudando a altura da linha (e da
+   pagina). Fixar a direcao em coluna torna a celula com a MESMA altura em toda pagina. */
+.identidade { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .identidade .ext {
   font-family: ui-monospace, monospace; font-size: 11px; color: var(--txt-2);
   background: var(--bg-3); padding: 1px 6px; border-radius: 4px; cursor: help;
@@ -202,7 +211,13 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--acento); c
    com cantos arredondados, PREENCHIDOS com a cor da acao ja em repouso (azul=baixar,
    vermelho=apagar) e icone branco — os antigos eram emoji transparente, quase
    invisiveis. Base comum em .acao-icone; cada classe define a cor solida. */
-td.check.acoes-linha { width: 92px; white-space: nowrap; }
+/* Largura FIXA das duas ultimas colunas: sem isto, quando "Atualizacao" carrega o
+   bloco (selo + data) numa pagina e so "—" noutra, a tabela cresce alem do container
+   naquela pagina e a coluna de acoes "escapa" para a direita (o vazio do overflow). */
+td.col-atualizacao, th:nth-last-child(2) { width: 108px; }
+td.col-acoes { width: 92px; white-space: nowrap; }
+/* O flex vive no DIV interno — um <td> com display:flex sai do algoritmo de largura
+   da tabela e desestabiliza as colunas vizinhas. */
 .acoes-linha { display: flex; gap: 8px; justify-content: center; align-items: center; }
 
 .acao-icone {
@@ -235,3 +250,12 @@ td.check.acoes-linha { width: 92px; white-space: nowrap; }
 
 .vazio { padding: 40px; text-align: center; color: var(--txt-2); }
 .carregando { padding: 30px; text-align: center; color: var(--txt-2); }
+
+/* Coluna de selecao (checkbox) — estreita e centralizada. */
+.col-check { width: 34px; text-align: center; }
+tr.linha-selecionada td { background: rgba(76, 141, 255, 0.08); }
+
+/* Coluna "Atualizacao": selo da situacao + data da ultima verificacao, empilhados. */
+.atualizacao-bloco { display: inline-flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+.atualizacao-data { color: var(--txt-2); font-size: 10px; line-height: 1; white-space: nowrap; }
+.atualizacao-nunca { color: var(--txt-2); opacity: 0.5; cursor: help; }

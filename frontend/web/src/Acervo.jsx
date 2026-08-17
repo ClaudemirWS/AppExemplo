@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api } from "./api.js";
+import { api, baixarEmMassa } from "./api.js";
 
 // Icones dos botoes de acao. SVG inline (nao emoji): herdam a cor branca via
 // `currentColor`, escalam nitido e nao dependem da fonte de emoji do SO — o 🗑
@@ -43,7 +43,26 @@ function classeFormato(f) {
   return "desconhecido";
 }
 
-function selosDeFormato(item) {
+function selosDeFormato(item, estadoDownload) {
+  // Enquanto ATUALIZA (rebaixa), a celula Formato vira a barra de progresso — o
+  // mesmo visual "barra-selo" do Catalogo (na fila -> baixando % -> tentativa N).
+  if (estadoDownload?.status === "baixando" || estadoDownload?.status === "fila") {
+    const pct = estadoDownload.status === "fila" ? 0 : (estadoDownload.pct ?? 0);
+    const rotulo = estadoDownload.status === "fila"
+      ? "na fila"
+      : estadoDownload.retentando
+        ? `tentativa ${estadoDownload.retentando}`
+        : `${pct}%`;
+    return (
+      <span className="barra-selo" title={rotulo}>
+        <span className="progresso"><i style={{ width: `${pct}%` }} /></span>
+        <span className="pct">{rotulo}</span>
+      </span>
+    );
+  }
+  if (estadoDownload?.status === "erro") {
+    return <span className="selo erro" title={estadoDownload.motivo}>erro</span>;
+  }
   const lista = item.formatos?.length ? item.formatos : [item.formato].filter(Boolean);
   if (!lista.length) return <span className="selo desconhecido">desconhecido</span>;
   return lista.map((f, i) => (
@@ -115,24 +134,50 @@ function selosDeIdentidade(item) {
   );
 }
 
-// Selo do resultado da verificacao de updates, por linha. `r` = {situacao, paginas}
-// da ultima verificacao (undefined = ainda nao verificou -> nada).
+// Data amigavel e curta: "hoje 14:30", "ontem 09:12", ou "17/08 14:30".
+function dataAmigavel(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const hoje = new Date();
+  const soData = x => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+  const ontem = new Date(hoje); ontem.setDate(hoje.getDate() - 1);
+  if (soData(d) === soData(hoje)) return `hoje ${hh}:${mm}`;
+  if (soData(d) === soData(ontem)) return `ontem ${hh}:${mm}`;
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")} ${hh}:${mm}`;
+}
+
+// Coluna "Atualizacao" por linha. `r` = registro persistido da ultima verificacao
+// { situacao, verificadoEm, paginasDesatualizadas } (undefined = nunca verificada).
+// Mostra o selo da situacao + a data embaixo, num bloco compacto.
 function seloAtualizacao(r) {
-  if (!r) return null;
+  if (!r) {
+    return (
+      <span className="atualizacao-nunca" title="Esta aula ainda nao foi verificada. Selecione e clique em Verificar atualizacoes.">
+        —
+      </span>
+    );
+  }
+  const data = dataAmigavel(r.verificadoEm);
+  let selo;
   if (r.situacao === "desatualizado") {
-    const quais = (r.paginas || [])
-      .filter(p => p.desatualizada)
-      .map(p => `${p.externalId}: ${p.versaoGravada} -> ${p.versaoAtual}`)
-      .join("\n");
-    return <span className="selo flash" title={`Versao nova no AVA:\n${quais}`}>atualizar</span>;
+    const quais = (r.paginasDesatualizadas || []).join(", ");
+    selo = <span className="selo flash" title={quais ? `Paginas com versao nova: ${quais}` : "Versao nova no AVA"}>atualizar</span>;
+  } else if (r.situacao === "atualizado") {
+    selo = <span className="selo ok" title="Todas as paginas na versao mais recente">em dia</span>;
+  } else if (r.situacao === "nao-versionavel") {
+    selo = <span className="selo desconhecido" title="Sem versao a comparar">n/d</span>;
+  } else {
+    selo = <span className="selo erro" title="Falha ao consultar o AVA">erro</span>;
   }
-  if (r.situacao === "atualizado") {
-    return <span className="selo ok" title="Todas as paginas na versao mais recente">em dia</span>;
-  }
-  if (r.situacao === "nao-versionavel") {
-    return <span className="selo desconhecido" title={r.motivo || "sem versao a comparar"}>n/d</span>;
-  }
-  return <span className="selo erro" title="Falha ao consultar o AVA">erro</span>;
+  return (
+    <span className="atualizacao-bloco">
+      {selo}
+      {data ? <small className="atualizacao-data" title={`Verificado em ${new Date(r.verificadoEm).toLocaleString("pt-BR")}`}>{data}</small> : null}
+    </span>
+  );
 }
 
 // Nomes de serie/segmento de um item, a partir das classificacoes reais.
@@ -207,13 +252,22 @@ export default function Acervo() {
   const [removendo, setRemovendo] = useState(null);
   const [reindexando, setReindexando] = useState(false);
   const [verificando, setVerificando] = useState(false);
-  // Mapa id -> "desatualizado"|"nao-versionavel"|"erro"|"atualizado" (resultado da
-  // ultima verificacao de updates). Vazio = ainda nao verificou.
+  // Mapa id -> { situacao, verificadoEm, paginasDesatualizadas } da ULTIMA verificacao.
+  // Carregado do backend ao abrir (persistido) e atualizado apos verificar.
   const [updates, setUpdates] = useState(() => new Map());
+  // Ids marcados nos checkboxes (Set). A verificacao age so sobre estes.
+  const [selecionados, setSelecionados] = useState(() => new Set());
+  // Estado do "Atualizar" (rebaixar por cima): id -> {status,pct,...}, igual ao
+  // Catalogo. `atualizando` trava os botoes; `cancelarAtualizacao` para a fila.
+  const [estadosDownload, setEstadosDownload] = useState(() => ({}));
+  const [atualizando, setAtualizando] = useState(false);
+  const [cancelarAtualizacao, setCancelarAtualizacao] = useState(null);
+  const [parandoAtualizacao, setParandoAtualizacao] = useState(false);
   const [aviso, setAviso] = useState("");
   const [fTipo, setFTipo] = useState(""); // "" = todos, "1" = Aula, "2" = Jogo
   const [fSegmento, setFSegmento] = useState("");
   const [fSerie, setFSerie] = useState("");
+  const [fAtualizacao, setFAtualizacao] = useState(""); // "", "atualizar", "em-dia", "nunca"
   const [busca, setBusca] = useState("");
   const [pagina, setPagina] = useState(1);
   // Qual celula expansivel esta aberta: "<id>:versao" ou "<id>:paginas" (so uma por vez).
@@ -237,6 +291,10 @@ export default function Acervo() {
     api.acervo()
       .then(r => setItens(r.itens || []))
       .catch(err => setErro(err.message));
+    // Historico persistido da ultima verificacao (para a coluna vir preenchida).
+    api.verificacoes()
+      .then(r => setUpdates(new Map(Object.entries(r.itens || {}))))
+      .catch(() => {});
   }
 
   useEffect(carregar, []);
@@ -258,11 +316,14 @@ export default function Acervo() {
   }
 
   async function reindexar() {
+    // Sem selecao = todo o acervo filtrado; com selecao, so os marcados (simetrico
+    // ao Verificar). O backend aceita ids opcionais.
+    const ids = selecionados.size ? [...selecionados] : filtrados.map(i => String(i.id));
     setReindexando(true);
     setErro("");
     setAviso("");
     try {
-      const r = await api.reindexarAcervo();
+      const r = await api.reindexarAcervo(ids);
       setAviso(`Reindexados ${r.reindexados} conteudos${r.naoEncontrados ? `, ${r.naoEncontrados} nao achados no catalogo` : ""}.`);
       carregar();
     } catch (err) {
@@ -272,25 +333,91 @@ export default function Acervo() {
     }
   }
 
-  // Pergunta ao servidor quais aulas tem versao nova no AVA (nao baixa nada).
-  // Guarda o resultado em `updates` (id -> situacao) para marcar o selo por linha.
+  // Pergunta ao servidor quais das aulas SELECIONADAS tem versao nova no AVA (nao
+  // baixa nada). O backend persiste com data; aqui mesclamos no `updates` para nao
+  // perder a verificacao anterior das aulas que NAO estavam selecionadas.
   async function verificar() {
+    // Sem selecao = "todas": verifica o conjunto FILTRADO (o que o usuario ve),
+    // nao so a pagina. Com selecao, age so sobre os marcados.
+    const ids = selecionados.size ? [...selecionados] : filtrados.map(i => String(i.id));
+    if (!ids.length) return; // acervo vazio / filtro sem resultado
     setVerificando(true);
     setErro("");
     setAviso("");
     try {
-      const r = await api.verificarUpdates();
-      const mapa = new Map((r.resultados || []).map(x => [String(x.id), x]));
-      setUpdates(mapa);
+      const r = await api.verificarUpdates(ids);
+      const agora = new Date().toISOString();
+      setUpdates(prev => {
+        const mapa = new Map(prev);
+        for (const x of r.resultados || []) {
+          mapa.set(String(x.id), {
+            situacao: x.situacao,
+            verificadoEm: agora,
+            paginasDesatualizadas: (x.paginas || []).filter(p => p.desatualizada).map(p => p.externalId).filter(Boolean)
+          });
+        }
+        return mapa;
+      });
       const n = (r.resultados || []).filter(x => x.situacao === "desatualizado").length;
       setAviso(n
         ? `${n} aula(s) com versao nova no AVA — marcadas com "atualizar". Rebaixe para atualizar.`
-        : "Nenhuma aula versionavel esta desatualizada.");
+        : "Nenhuma das aulas verificadas esta desatualizada.");
     } catch (err) {
       setErro(err.message);
     } finally {
       setVerificando(false);
     }
+  }
+
+  // "Atualizar": rebaixa por cima as aulas SELECIONADAS — a MESMA acao do Catalogo
+  // (baixarEmMassa via SSE). O servidor regrava o zip e a classificacao; o progresso
+  // aparece na coluna Formato (barra-selo). So age sobre selecionados (botao travado
+  // quando nao ha nenhum). Ao terminar, recarrega o acervo.
+  function atualizarSelecionados() {
+    const ids = [...selecionados];
+    if (!ids.length) return;
+    const itensSelecionados = (itens || [])
+      .filter(i => selecionados.has(String(i.id)))
+      .map(i => ({
+        id: i.id,
+        nome: i.nome || "",
+        serieNome: (i.classificacoes || [])[0]?.serieNome || "",
+        tipoId: i.tipoId ?? null,
+        classificacoes: i.classificacoes || [],
+        disciplinaId: i.disciplinaId ?? null,
+        disciplina: i.disciplina || "",
+        habilidade: i.habilidadeCodigo || i.habilidade || "",
+        imagem: i.imagem || ""
+      }));
+    setAtualizando(true);
+    setErro("");
+    setAviso("");
+    setEstadosDownload(prev => {
+      const p = { ...prev };
+      ids.forEach(id => { p[id] = { status: "fila", pct: 0 }; });
+      return p;
+    });
+
+    const parar = baixarEmMassa(itensSelecionados, {
+      "item-inicio": ({ id }) => setEstadosDownload(p => ({ ...p, [id]: { status: "baixando", pct: 0 } })),
+      progresso: ({ id, pct, retentando }) =>
+        setEstadosDownload(p => ({ ...p, [id]: { status: "baixando", pct, retentando } })),
+      "item-fim": d => setEstadosDownload(p => ({ ...p, [d.id]: d })),
+      fim: () => { setAtualizando(false); setCancelarAtualizacao(null); carregar(); },
+      erro: ({ motivo }) => { setErro(motivo); setAtualizando(false); setCancelarAtualizacao(null); carregar(); }
+    });
+    setCancelarAtualizacao(() => parar);
+  }
+
+  // Para de verdade: avisa o SERVIDOR (senao segue baixando a fila) e aborta o stream.
+  async function pararAtualizacao() {
+    setParandoAtualizacao(true);
+    try { await api.cancelarDownload(); } catch { /* aborta o stream mesmo assim */ }
+    if (cancelarAtualizacao) cancelarAtualizacao();
+    setAtualizando(false);
+    setParandoAtualizacao(false);
+    setCancelarAtualizacao(null);
+    carregar();
   }
 
   // Opcoes de filtro derivadas do proprio acervo (segmento -> series).
@@ -325,6 +452,13 @@ export default function Acervo() {
       if (fTipo && String(item.tipoId ?? 1) !== fTipo) return false;
       if (fSegmento && !segmentosDoItem(item).includes(fSegmento)) return false;
       if (fSerie && !seriesDoItem(item).includes(fSerie)) return false;
+      // Filtro por situacao da ULTIMA verificacao (persistida em `updates`).
+      if (fAtualizacao) {
+        const r = updates.get(String(item.id));
+        if (fAtualizacao === "nunca" && r) return false;
+        if (fAtualizacao === "atualizar" && r?.situacao !== "desatualizado") return false;
+        if (fAtualizacao === "em-dia" && r?.situacao !== "atualizado") return false;
+      }
       // Busca por id (exato/parcial) OU nome (substring), sem diferenciar maiuscula.
       if (termo) {
         const casaId = String(item.id || "").toLowerCase().includes(termo);
@@ -333,7 +467,7 @@ export default function Acervo() {
       }
       return true;
     });
-  }, [itens, fTipo, fSegmento, fSerie, busca]);
+  }, [itens, fTipo, fSegmento, fSerie, busca, fAtualizacao, updates]);
 
   // Paginacao do acervo: 10 por pagina. `pagina` e limitada ao total; a fatia sai
   // do `filtrados` (o filtro roda antes da paginacao).
@@ -344,8 +478,27 @@ export default function Acervo() {
   const inicio = (paginaAtual - 1) * POR_PAGINA;
   const paginados = filtrados.slice(inicio, inicio + POR_PAGINA);
 
+  // --- Selecao (checkboxes) — escopo da PAGINA VISIVEL ---
+  const idsDaPagina = paginados.map(i => String(i.id));
+  const todosDaPaginaMarcados = idsDaPagina.length > 0 && idsDaPagina.every(id => selecionados.has(id));
+  function alternarSelecao(id) {
+    setSelecionados(prev => {
+      const p = new Set(prev);
+      p.has(String(id)) ? p.delete(String(id)) : p.add(String(id));
+      return p;
+    });
+  }
+  function alternarTodosDaPagina() {
+    setSelecionados(prev => {
+      const p = new Set(prev);
+      if (todosDaPaginaMarcados) idsDaPagina.forEach(id => p.delete(id));
+      else idsDaPagina.forEach(id => p.add(id));
+      return p;
+    });
+  }
+
   // Volta a pagina 1 quando o filtro ou a busca mudam — senao ficaria numa pagina que sumiu.
-  useEffect(() => { setPagina(1); }, [fTipo, fSegmento, fSerie, busca]);
+  useEffect(() => { setPagina(1); }, [fTipo, fSegmento, fSerie, busca, fAtualizacao]);
   // Fecha qualquer popover ao trocar de pagina (o item pode nem estar mais na tela).
   useEffect(() => { setExpandido(null); }, [paginaAtual]);
 
@@ -399,6 +552,15 @@ export default function Acervo() {
                 {opcoesSerie.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
+            <div className="filtro">
+              <label>Atualização</label>
+              <select value={fAtualizacao} onChange={e => setFAtualizacao(e.target.value)}>
+                <option value="">Todas</option>
+                <option value="atualizar">Atualizar</option>
+                <option value="em-dia">Em dia</option>
+                <option value="nunca">Não verificada</option>
+              </select>
+            </div>
           </div>
 
           <div className="barra-acao">
@@ -406,24 +568,53 @@ export default function Acervo() {
               {filtrados.length
                 ? `${inicio + 1}–${inicio + paginados.length} de ${filtrados.length}`
                 : "0"} conteudos
-              {(fTipo || fSegmento || fSerie || busca.trim()) ? ` (filtrado de ${itens.length})` : ""}
+              {(fTipo || fSegmento || fSerie || fAtualizacao || busca.trim()) ? ` (filtrado de ${itens.length})` : ""}
+              {selecionados.size ? ` · ${selecionados.size} selecionada(s)` : ""}
             </span>
             <div className="espaco" />
-            <button onClick={verificar} disabled={verificando}
-              title="Pergunta ao AVA se alguma pagina tem versao nova (nao baixa nada)">
-              {verificando ? "Verificando..." : "Verificar atualizacões"}
+            {atualizando ? (
+              <button onClick={pararAtualizacao} disabled={parandoAtualizacao}>
+                {parandoAtualizacao ? "Parando..." : "Parar"}
+              </button>
+            ) : (
+              <button className="primario" onClick={atualizarSelecionados} disabled={selecionados.size === 0}
+                title={selecionados.size === 0
+                  ? "Selecione as aulas que deseja atualizar"
+                  : "Rebaixa as aulas selecionadas por cima (mesma acao do Catalogo) — traz a versao mais nova"}>
+                Atualizar{selecionados.size ? ` (${selecionados.size})` : ""}
+              </button>
+            )}
+            <button onClick={verificar} disabled={verificando || atualizando || filtrados.length === 0}
+              title={selecionados.size
+                ? "Verifica no AVA as aulas selecionadas (nao baixa nada)"
+                : "Nada selecionado: verifica TODAS as aulas listadas (nao baixa nada)"}>
+              {verificando
+                ? "Verificando..."
+                : `Verificar atualizacões (${selecionados.size || filtrados.length})`}
             </button>
-            <button onClick={reindexar} disabled={reindexando}
-              title="Corrige serie/segmento dos conteudos baixados consultando o catalogo, sem re-baixar">
-              {reindexando ? "Reindexando..." : "Reindexar metadados"}
+            <button onClick={reindexar} disabled={reindexando || atualizando || filtrados.length === 0}
+              title={selecionados.size
+                ? "Corrige serie, segmento e disciplina das aulas selecionadas — sem re-baixar"
+                : "Nada selecionado: corrige serie, segmento e disciplina de TODAS as aulas listadas — sem re-baixar"}>
+              {reindexando
+                ? "Corrigindo..."
+                : `Corrigir série e disciplina (${selecionados.size || filtrados.length})`}
             </button>
-            <button onClick={carregar}>Atualizar</button>
           </div>
 
           <div className="tabela-wrap">
             <table>
               <thead>
                 <tr>
+                  <th className="col-check">
+                    <input
+                      type="checkbox"
+                      checked={todosDaPaginaMarcados}
+                      onChange={alternarTodosDaPagina}
+                      title="Selecionar todas as aulas desta pagina"
+                      aria-label="Selecionar todas as aulas desta pagina"
+                    />
+                  </th>
                   <th>ID</th>
                   <th>Nome</th>
                   <th>Identidade</th>
@@ -442,12 +633,20 @@ export default function Acervo() {
                   const temVersao = paginas.some(p => p.n != null);
                   const faltantes = paginas.filter(p => !p.baixada).length;
                   return (
-                    <tr key={item.id}>
+                    <tr key={item.id} className={selecionados.has(String(item.id)) ? "linha-selecionada" : ""}>
+                      <td className="col-check">
+                        <input
+                          type="checkbox"
+                          checked={selecionados.has(String(item.id))}
+                          onChange={() => alternarSelecao(item.id)}
+                          aria-label={`Selecionar ${item.nome}`}
+                        />
+                      </td>
                       <td>{item.id}</td>
                       <td className="nome">{item.nome}</td>
                       <td>{selosDeIdentidade(item)}</td>
                       <td>{series.length ? series.join(", ") : <span style={{ color: "var(--txt-2)" }}>—</span>}</td>
-                      <td>{selosDeFormato(item)}</td>
+                      <td>{selosDeFormato(item, estadosDownload[item.id])}</td>
                       <td className="col-expansivel">
                         {temVersao ? (
                           <CelulaExpansivel
@@ -489,16 +688,18 @@ export default function Acervo() {
                           <span>{item.paginasBaixadas}/{item.totalPaginas}</span>
                         )}
                       </td>
-                      <td>{seloAtualizacao(updates.get(String(item.id)))}</td>
-                      <td className="check acoes-linha">
-                        <button className="acao-icone baixar-estrutura" title="Baixar estrutura de LOs (zip: uma pasta por LO com os arquivos da aula)"
-                          onClick={() => baixarEstruturaLOs(item)}>
-                          <IconeBaixar />
-                        </button>
-                        <button className="acao-icone lixeira" title="Apagar do acervo"
-                          onClick={() => remover(item)} disabled={removendo === item.id}>
-                          {removendo === item.id ? <span className="spin-acao" /> : <IconeLixeira />}
-                        </button>
+                      <td className="col-atualizacao">{seloAtualizacao(updates.get(String(item.id)))}</td>
+                      <td className="col-acoes">
+                        <div className="acoes-linha">
+                          <button className="acao-icone baixar-estrutura" title="Baixar estrutura de LOs (zip: uma pasta por LO com os arquivos da aula)"
+                            onClick={() => baixarEstruturaLOs(item)}>
+                            <IconeBaixar />
+                          </button>
+                          <button className="acao-icone lixeira" title="Apagar do acervo"
+                            onClick={() => remover(item)} disabled={removendo === item.id}>
+                            {removendo === item.id ? <span className="spin-acao" /> : <IconeLixeira />}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

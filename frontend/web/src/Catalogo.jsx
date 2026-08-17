@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, baixarEmMassa } from "./api.js";
+
+// Filtro inicial padrao do Catalogo (por NOME — os ids da taxonomia nao sao fixos).
+// disciplina/tipo ja tem default numerico; segmento e serie sao resolvidos assim que
+// a taxonomia chega. Ao casar os dois, a tela ja lista sozinha.
+const SEGMENTO_PADRAO = "Ensino Fundamental Anos Iniciais";
+const SERIE_PADRAO = "3º Ano EF";
 
 const OPCAO_TODOS = { id: "", nome: "Todos" };
 
@@ -97,6 +103,9 @@ export default function Catalogo() {
   const [indisponiveis, setIndisponiveis] = useState(() => new Map());
   const [progressoFila, setProgressoFila] = useState(null); // {atual,total,concluidos}
   const [pagina, setPagina] = useState(1);
+  // Etapa da pre-selecao padrao (uma vez, na abertura): "seg" -> resolver segmento,
+  // "serie" -> resolver serie e listar, "pronto" -> nao interfere mais.
+  const preSelecao = useRef("seg");
 
   function carregarBaixados() {
     api.acervo()
@@ -130,19 +139,44 @@ export default function Catalogo() {
   );
   const seriesDoSegmento = segAtual?.series || [];
 
-  async function varrer() {
+  // Pre-selecao padrao (so na abertura): assim que a taxonomia da disciplina padrao
+  // chega, seleciona o segmento por nome; quando as series desse segmento chegam,
+  // seleciona a serie por nome e lista. Se algum nome nao existir, para sem forcar.
+  useEffect(() => {
+    if (preSelecao.current !== "seg" || !segmentos.length) return;
+    const seg = segmentos.find(s => s.nome === SEGMENTO_PADRAO);
+    if (!seg) { preSelecao.current = "pronto"; return; }
+    preSelecao.current = "serie";
+    setSegmento(String(seg.id));
+    setSerie("");
+  }, [segmentos]);
+
+  useEffect(() => {
+    if (preSelecao.current !== "serie" || !seriesDoSegmento.length) return;
+    const s = seriesDoSegmento.find(x => x.nome === SERIE_PADRAO);
+    preSelecao.current = "pronto";
+    if (!s) return;
+    setSerie(String(s.id));
+    varrer(String(s.id)); // lista ja com a serie padrao (o estado `serie` ainda nao propagou)
+  }, [seriesDoSegmento]);
+
+  async function varrer(serieForcada) {
     setCarregando(true);
     setErro("");
     setMarcados(new Set());
     setEstados({});
     try {
+      // serieForcada: usada pela pre-selecao inicial, quando o estado `serie` ainda
+      // nao propagou no mesmo ciclo de render. Caso normal (clique em Listar) usa `serie`.
+      const ehIdForcado = typeof serieForcada === "string" || typeof serieForcada === "number";
+      const serieAlvo = ehIdForcado ? String(serieForcada) : serie;
       // discipline por serie: no Fundamental e o proprio id da disciplina; no Infantil
       // de Matematica e o ETQRT (27). A taxonomia ja capturou isso em disciplinaSerieId.
-      const serieObj = seriesDoSegmento.find(s => String(s.id) === String(serie));
+      const serieObj = seriesDoSegmento.find(s => String(s.id) === String(serieAlvo));
       const r = await api.catalogo({
         tipo,
         segment: segmento,
-        serie,
+        serie: serieAlvo,
         word: busca,
         infantil: segAtual?.infantil ? "true" : "",
         disciplina,

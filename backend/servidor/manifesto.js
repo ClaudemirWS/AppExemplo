@@ -270,3 +270,70 @@ export async function removerIndisponivel(id) {
   await gravarIndisponiveis(novos);
   return novos;
 }
+
+// --- Historico de VERIFICACAO de atualizacoes ---------------------------------
+//
+// Guarda o resultado da ultima "Verificar atualizacoes" POR AULA, com data. A
+// verificacao consulta o AVA (versao nova de alguma pagina) e o resultado envelhece,
+// entao mostramos SEMPRE junto do carimbo de quando foi feito — o operador ve tanto
+// a situacao quanto ha quanto tempo ela foi apurada. Arquivo SEPARADO (como os
+// indisponiveis), pela mesma razao: o manifesto tem a invariante "item = zip real" e
+// e reescrito pela reconciliacao; isto e metadado volatil. Mapa { id -> registro }.
+// registro: { situacao, verificadoEm(ISO), paginasDesatualizadas:[externalId] }.
+
+const NOME_VERIFICACOES = "verificacoes.json";
+
+function caminhoVerificacoesDisco() {
+  return path.join(obterRaizAcervo(), NOME_VERIFICACOES);
+}
+
+// Le o mapa atual. {} se ainda nao existe.
+export async function lerVerificacoes() {
+  let bruto = null;
+  if (r2Configurado()) {
+    try {
+      bruto = (await lerObjeto(NOME_VERIFICACOES)).toString("utf-8");
+    } catch {
+      return {};
+    }
+  } else {
+    try {
+      bruto = await fs.readFile(caminhoVerificacoesDisco(), "utf-8");
+    } catch {
+      return {};
+    }
+  }
+  try {
+    const dados = JSON.parse(bruto);
+    return dados && typeof dados.itens === "object" && dados.itens ? dados.itens : {};
+  } catch {
+    return {};
+  }
+}
+
+async function gravarVerificacoes(itens) {
+  const corpo = JSON.stringify({ atualizadoEm: new Date().toISOString(), itens }, null, 2);
+  if (r2Configurado()) {
+    await subirObjeto(NOME_VERIFICACOES, Buffer.from(corpo), "application/json");
+  } else {
+    await fs.writeFile(caminhoVerificacoesDisco(), corpo, "utf-8");
+  }
+}
+
+// Mescla os `resultados` (de verificarLista: [{id, situacao, paginas}]) no historico
+// e grava, carimbando a data agora. So substitui os ids verificados nesta rodada —
+// os demais mantem a verificacao anterior. Devolve o mapa completo resultante.
+export async function registrarVerificacoes(resultados) {
+  const mapa = await lerVerificacoes();
+  const agora = new Date().toISOString();
+  for (const r of resultados || []) {
+    const id = String(r.id);
+    const paginasDesatualizadas = (r.paginas || [])
+      .filter(p => p.desatualizada)
+      .map(p => p.externalId)
+      .filter(Boolean);
+    mapa[id] = { situacao: r.situacao, verificadoEm: agora, paginasDesatualizadas };
+  }
+  await gravarVerificacoes(mapa);
+  return mapa;
+}

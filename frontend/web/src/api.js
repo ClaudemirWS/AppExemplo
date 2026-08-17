@@ -42,8 +42,14 @@ export const api = {
   indisponiveis: () => json("/acervo/indisponiveis"),
   removerAcervo: id => json(`/acervo/${encodeURIComponent(id)}`, { method: "DELETE" }),
   cancelarDownload: () => json("/download/cancelar", { method: "POST" }),
-  reindexarAcervo: () => json("/acervo/reindexar", { method: "POST" }),
-  verificarUpdates: () => json("/acervo/verificar-updates")
+  // ids opcional: sem eles corrige TODO o acervo; com eles, so os selecionados.
+  reindexarAcervo: (ids = []) =>
+    json("/acervo/reindexar", { method: "POST", body: JSON.stringify({ ids }) }),
+  // Verifica SO os ids selecionados; o backend persiste o resultado com data.
+  verificarUpdates: ids =>
+    json("/acervo/verificar-updates", { method: "POST", body: JSON.stringify({ ids }) }),
+  // Historico da ultima verificacao por aula (para a coluna vir preenchida ao abrir).
+  verificacoes: () => json("/acervo/verificacoes")
 };
 
 // Download em massa via SSE. Recebe os ITENS selecionados (id + metadados de

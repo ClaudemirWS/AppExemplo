@@ -13,7 +13,9 @@ import {
   removerDoManifestoR2,
   lerIndisponiveis,
   registrarIndisponivel,
-  removerIndisponivel
+  removerIndisponivel,
+  lerVerificacoes,
+  registrarVerificacoes
 } from "./manifesto.js";
 import { verificarLista } from "./verificadorVersao.js";
 import { r2Configurado, subirObjeto, apagarObjeto, lerObjeto } from "./r2Cliente.js";
@@ -495,16 +497,41 @@ app.get("/api/acervo/indisponiveis", async (_req, res) => {
   }
 });
 
+// --- Historico de verificacoes (por aula, com data) ---
+// Lido ao abrir a aba Acervo para a coluna "Atualizacao" ja vir preenchida com a
+// ultima verificacao de cada aula. Mapa { id -> {situacao, verificadoEm, ...} }.
+app.get("/api/acervo/verificacoes", async (_req, res) => {
+  try {
+    res.json({ itens: await lerVerificacoes() });
+  } catch (erro) {
+    res.status(500).json({ erro: erro.message });
+  }
+});
+
 // --- Verificar atualizacoes (versao nova de alguma pagina) ---
 // Compara o vN gravado de cada aula com o vN atual do publicador. NAO baixa aulas.
-// Precisa de sessao (usa o token do login para consultar o publicador). Devolve
-// { total, resultados:[{id, situacao, paginas}] } — a aba marca os "desatualizado".
-app.get("/api/acervo/verificar-updates", async (req, res) => {
+// Verifica SO os ids enviados (selecao da tela) — mais rapido e nao estoura no free
+// tier. Persiste o resultado com data (registrarVerificacoes) para a coluna sobreviver
+// ao reload. Precisa de sessao (usa o token do login para consultar o publicador).
+// Devolve { total, resultados:[{id, situacao, paginas}] }.
+app.post("/api/acervo/verificar-updates", async (req, res) => {
   if (!exigirSessao(req, res)) return;
   try {
-    const itens = await lerAcervo();
-    if (!itens.length) return res.json({ total: 0, resultados: [] });
-    res.json(await verificarLista(itens));
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    if (!ids.length) return res.status(400).json({ erro: "Nenhuma aula selecionada." });
+
+    const acervo = await lerAcervo();
+    const alvo = acervo.filter(item => ids.includes(String(item.id)));
+    if (!alvo.length) return res.json({ total: 0, resultados: [] });
+
+    const resultado = await verificarLista(alvo);
+    // Persiste com carimbo de data (nao bloqueia a resposta se a gravacao falhar).
+    try {
+      await registrarVerificacoes(resultado.resultados);
+    } catch (e) {
+      console.warn(`[AVA_DOWNLOAD] VERIFICACAO_PERSIST_FALHOU: ${e?.message || e}`);
+    }
+    res.json(resultado);
   } catch (erro) {
     res.status(502).json({ erro: erro.message });
   }
@@ -607,9 +634,12 @@ app.get("/api/acervo/:id/estrutura", async (req, res) => {
 app.post("/api/acervo/reindexar", async (req, res) => {
   if (!exigirSessao(req, res)) return;
   try {
-    // 1. Ler o acervo atual (lista de zips).
+    // 1. Ler o acervo atual (lista de zips). `ids` opcional no corpo restringe a
+    //    correcao aos selecionados; ausente/vazio = corrige TODO o acervo.
     const base = path.join(obterRaizAcervo(), PASTA_CONTEUDOS_OFFLINE);
-    const doAcervo = await lerAcervo();
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    let doAcervo = await lerAcervo();
+    if (ids.length) doAcervo = doAcervo.filter(item => ids.includes(String(item.id)));
     if (!doAcervo.length) {
       return res.json({ ok: true, reindexados: 0, naoEncontrados: 0 });
     }
