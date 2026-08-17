@@ -1,8 +1,15 @@
-// Cliente do front -> servidor local (/api). O navegador so fala com o nosso
+// Cliente do front -> servidor Express (/api). O navegador so fala com o nosso
 // Express; quem fala com o AVA e o servidor.
+//
+// BASE da API: vazia por padrao (mesma origem — local, onde o dev server faz proxy
+// de /api). No Render, front e back sao hosts DIFERENTES: define-se VITE_API_URL com
+// a URL do backend. `credentials:"include"` em TODA chamada para o cookie de sessao
+// (acervo_sid) viajar cross-origin — casa com o CORS-com-credenciais do backend.
+const BASE_API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
 
 async function json(caminho, opcoes = {}) {
-  const resposta = await fetch(`/api${caminho}`, {
+  const resposta = await fetch(`${BASE_API}/api${caminho}`, {
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     ...opcoes
   });
@@ -45,8 +52,9 @@ export const api = {
 export function baixarEmMassa(itens, callbacks = {}) {
   const controlador = new AbortController();
 
-  fetch("/api/download", {
+  fetch(`${BASE_API}/api/download`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ itens }),
     signal: controlador.signal

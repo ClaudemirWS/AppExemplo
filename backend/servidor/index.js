@@ -1,5 +1,6 @@
 import express from "express";
 import path from "node:path";
+import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { login, estruturaFiltro } from "./avaApi.js";
@@ -30,16 +31,95 @@ const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const PORTA = Number(process.env.PORT || 3100);
 
 const app = express();
+
+// CORS com CREDENCIAIS. No Render, front (static) e back (web service) tem origens
+// DIFERENTES, e o cookie de sessao (acervo_sid) so viaja cross-origin se:
+//   - o backend ecoa a origem exata em Access-Control-Allow-Origin (nunca "*" com
+//     credenciais — o navegador recusa), e
+//   - envia Access-Control-Allow-Credentials: true, e
+//   - o front faz fetch com credentials:"include".
+// A origem permitida vem de FRONTEND_URL (a URL do static site no Render). Sem ela,
+// so mesma-origem funciona (local, onde front e back compartilham o host via proxy).
+const FRONTEND_URL = (process.env.FRONTEND_URL || "").replace(/\/+$/, "");
+app.use((req, res, next) => {
+  const origem = req.headers.origin;
+  // Ecoa a origem se casar com a permitida (ou em dev/local, qualquer localhost).
+  const permitida =
+    (FRONTEND_URL && origem === FRONTEND_URL) ||
+    (origem && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origem));
+  if (permitida) {
+    res.setHeader("Access-Control-Allow-Origin", origem);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  }
+  if (req.method === "OPTIONS") {
+    res.statusCode = permitida ? 204 : 403;
+    return res.end();
+  }
+  next();
+});
+
 app.use(express.json());
 
-// Sessao unica em memoria. Ferramenta pessoal, um usuario, um processo.
-let sessao = null;
+// Le um cookie do header, sem dependencia (prototipo). Ex.: "acervo_sid=abc; x=1".
+function lerCookie(req, nome) {
+  const bruto = req.headers?.cookie || "";
+  for (const par of bruto.split(";")) {
+    const [k, ...v] = par.trim().split("=");
+    if (k === nome) return decodeURIComponent(v.join("="));
+  }
+  return null;
+}
 
-// Cancelamento do download em curso. Um download por vez (single-user), entao um
-// token de modulo basta. O loop consulta `.cancelado` entre itens, e o proprio
-// nucleo o consulta entre recursos via `verificarCancelamento` — entao "Parar"
-// interrompe no meio de uma aula, nao so entre aulas.
-let cancelamentoDownload = null;
+// SESSOES POR USUARIO (multiusuario). Antes era um `let sessao` global — funcionava
+// no PC de um operador so, mas no servidor dois admins se sobrescreviam (o login de
+// um trocava o token do outro). Agora cada admin tem sua sessao, identificada por um
+// cookie opaco (`sid`). Em memoria: some no restart do servico (aceitavel p/ prototipo;
+// o admin so refaz login). O `Map` evita vazamento ilimitado via um teto simples.
+const SESSOES = new Map(); // sid -> { token, usuario, papeis, criadaEm }
+const NOME_COOKIE_SESSAO = "acervo_sid";
+const MAX_SESSOES = 200;
+
+function novoSid() {
+  return crypto.randomUUID();
+}
+
+function guardarSessao(dados) {
+  // Teto simples: se estourar, descarta a mais antiga (prototipo, sem TTL sofisticado).
+  if (SESSOES.size >= MAX_SESSOES) {
+    const maisAntiga = [...SESSOES.entries()].sort((a, b) => a[1].criadaEm - b[1].criadaEm)[0];
+    if (maisAntiga) SESSOES.delete(maisAntiga[0]);
+  }
+  const sid = novoSid();
+  SESSOES.set(sid, { ...dados, criadaEm: Date.now() });
+  return sid;
+}
+
+// Monta o Set-Cookie da sessao com os atributos certos para cada cenario:
+//   - HTTPS (Render): SameSite=None; Secure — obrigatorio para o cookie viajar
+//     cross-origin (front e back em hosts diferentes). Sem isso o navegador nao envia.
+//   - local http (front e back same-origin via proxy): SameSite=Lax, sem Secure
+//     (Secure exigiria HTTPS, que nao ha no dev). `valor` vazio + maxAge=0 = apagar.
+function montarCookieSessao(req, valor, apagar = false) {
+  const seguro = req.secure || req.headers["x-forwarded-proto"] === "https";
+  const sameSite = seguro ? "None" : "Lax";
+  const partes = [
+    `${NOME_COOKIE_SESSAO}=${apagar ? "" : valor}`,
+    "HttpOnly",
+    `SameSite=${sameSite}`,
+    "Path=/"
+  ];
+  if (seguro) partes.push("Secure");
+  if (apagar) partes.push("Max-Age=0");
+  return partes.join("; ");
+}
+
+// Cancelamento do download em curso. POR SESSAO agora (sid -> token de cancelamento),
+// senao o "Parar" de um admin abortaria o download de outro. O loop consulta
+// `.cancelado` entre itens; o nucleo o consulta entre recursos via `verificarCancelamento`.
+const CANCELAMENTOS = new Map(); // sid -> { cancelado, signal }
 
 // Falha PERMANENTE = o conteudo nao e baixavel offline (nenhuma pagina em formato
 // suportado). Re-tentar da o mesmo resultado e parece loop. Falhas de rede
@@ -48,11 +128,17 @@ function ehFalhaPermanente(erro) {
   return String(erro?.message || "").includes(MENSAGEM_AULA_INDISPONIVEL_OFFLINE);
 }
 
-function exigirSessao(res) {
+// Resolve a sessao do cookie e a injeta em req.sessao. Retorna false (e responde 401)
+// se nao houver sessao valida — mesma assinatura de uso de antes, mas por usuario.
+function exigirSessao(req, res) {
+  const sid = lerCookie(req, NOME_COOKIE_SESSAO);
+  const sessao = sid ? SESSOES.get(sid) : null;
   if (!sessao?.token) {
     res.status(401).json({ erro: "Nao autenticado." });
     return false;
   }
+  req.sid = sid;
+  req.sessao = sessao;
   return true;
 }
 
@@ -105,8 +191,9 @@ async function lerAcervo() {
   return itens;
 }
 
-app.get("/api/health", (_req, res) => {
-  res.json({ ok: true, autenticado: Boolean(sessao?.token) });
+app.get("/api/health", (req, res) => {
+  const sid = lerCookie(req, NOME_COOKIE_SESSAO);
+  res.json({ ok: true, autenticado: Boolean(sid && SESSOES.get(sid)?.token) });
 });
 
 // --- Login ---
@@ -126,7 +213,8 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    sessao = { token: dados.token, usuario: dados.usuario, papeis: dados.papeis };
+    const sid = guardarSessao({ token: dados.token, usuario: dados.usuario, papeis: dados.papeis });
+    res.setHeader("Set-Cookie", montarCookieSessao(req, sid));
     res.json({
       ok: true,
       usuario: dados.usuario?.name || usuario,
@@ -137,8 +225,10 @@ app.post("/api/login", async (req, res) => {
   }
 });
 
-app.post("/api/logout", (_req, res) => {
-  sessao = null;
+app.post("/api/logout", (req, res) => {
+  const sid = lerCookie(req, NOME_COOKIE_SESSAO);
+  if (sid) SESSOES.delete(sid);
+  res.setHeader("Set-Cookie", montarCookieSessao(req, "", true));
   res.json({ ok: true });
 });
 
@@ -154,10 +244,10 @@ app.get("/api/disciplinas", (_req, res) => {
 // Infantil de Matematica e o ETQRT (27). Series sem o componente ficam de fora (por
 // isso o Infantil some quando a disciplina nao tem equivalente Infantil, ex.: Portugues).
 app.get("/api/taxonomia", async (req, res) => {
-  if (!exigirSessao(res)) return;
+  if (!exigirSessao(req, res)) return;
   try {
     const disciplinaAlvo = disciplinaPorId(req.query.disciplina || DISCIPLINA_MATEMATICA);
-    const resposta = await estruturaFiltro(sessao.token, 1); // tipo 1 = Aula
+    const resposta = await estruturaFiltro(req.sessao.token, 1); // tipo 1 = Aula
     const segmentos = [];
     for (const seg of resposta?.data || []) {
       const infantil = segmentoEhInfantil(seg?.name);
@@ -183,7 +273,7 @@ app.get("/api/taxonomia", async (req, res) => {
 
 // --- Varredura de catalogo (lista completa do filtro) ---
 app.get("/api/catalogo", async (req, res) => {
-  if (!exigirSessao(res)) return;
+  if (!exigirSessao(req, res)) return;
   try {
     const { tipo, segment, serie, word, infantil, disciplina, disciplinaSerie } = req.query;
     const temSegmento = Boolean(segment);
@@ -195,7 +285,7 @@ app.get("/api/catalogo", async (req, res) => {
       disciplinaSerieId: disciplinaSerie ? Number(disciplinaSerie) : null,
       disciplinaId: disciplina ? Number(disciplina) : DISCIPLINA_MATEMATICA
     });
-    const resultado = await varrerCatalogo(sessao.token, {
+    const resultado = await varrerCatalogo(req.sessao.token, {
       tipo: tipo ? Number(tipo) : 1,
       discipline,
       segment: temSegmento ? Number(segment) : null,
@@ -211,7 +301,7 @@ app.get("/api/catalogo", async (req, res) => {
 // --- Fila de download em massa (SSE) ---
 // Recebe a lista de ids marcados e baixa um a um, emitindo eventos de progresso.
 app.post("/api/download", async (req, res) => {
-  if (!exigirSessao(res)) return;
+  if (!exigirSessao(req, res)) return;
   // Aceita `itens` (id + classificacoes/disciplina/habilidade) ou, por
   // compatibilidade, `ids` cru.
   const itensEntrada = Array.isArray(req.body?.itens)
@@ -256,11 +346,12 @@ app.post("/api/download", async (req, res) => {
     }
   });
 
-  // Token de cancelamento desta corrida. `.cancelado` e lido pelo loop e pelo
-  // nucleo (verificarCancelamento) — o botao "Parar" seta isso via /download/cancelar.
+  // Token de cancelamento desta corrida, POR SESSAO. `.cancelado` e lido pelo loop e
+  // pelo nucleo (verificarCancelamento) — o "Parar" do PROPRIO admin seta isso via
+  // /download/cancelar. Guardado por sid para o Parar de um nao abortar o de outro.
   const controlador = new AbortController();
-  cancelamentoDownload = { cancelado: false, signal: controlador.signal };
-  const tokenCancelamento = cancelamentoDownload;
+  const tokenCancelamento = { cancelado: false, signal: controlador.signal };
+  CANCELAMENTOS.set(req.sid, tokenCancelamento);
   const paradoPeloUsuario = () => tokenCancelamento.cancelado;
 
   enviar("inicio", { total: ids.length });
@@ -289,7 +380,7 @@ app.post("/api/download", async (req, res) => {
       }
       try {
         const { detalhes, indice: indiceAcervo } = await baixarConteudo({
-          token: sessao.token,
+          token: req.sessao.token,
           conteudoId: id,
           cancelToken: tokenCancelamento,
           // Classificacao real do catalogo, para gravar no indice do acervo.
@@ -365,17 +456,19 @@ app.post("/api/download", async (req, res) => {
   const foiCancelado = clienteDesconectou || paradoPeloUsuario();
   enviar("fim", { cancelado: foiCancelado });
   res.end();
-  // Libera o token so se ainda for o desta corrida (evita apagar o de um novo
-  // download que tenha comecado).
-  if (cancelamentoDownload === tokenCancelamento) {
-    cancelamentoDownload = null;
+  // Libera o token desta sessao so se ainda for o desta corrida (evita apagar o de
+  // um novo download que o mesmo admin tenha comecado).
+  if (CANCELAMENTOS.get(req.sid) === tokenCancelamento) {
+    CANCELAMENTOS.delete(req.sid);
   }
 });
 
-// --- Parar o download em curso ---
-app.post("/api/download/cancelar", (_req, res) => {
-  if (cancelamentoDownload) {
-    cancelamentoDownload.cancelado = true;
+// --- Parar o download em curso (do proprio admin) ---
+app.post("/api/download/cancelar", (req, res) => {
+  if (!exigirSessao(req, res)) return;
+  const token = CANCELAMENTOS.get(req.sid);
+  if (token) {
+    token.cancelado = true;
     console.warn("[AVA_DOWNLOAD] CANCELAMENTO solicitado pelo usuario");
     return res.json({ ok: true, cancelando: true });
   }
@@ -406,8 +499,8 @@ app.get("/api/acervo/indisponiveis", async (_req, res) => {
 // Compara o vN gravado de cada aula com o vN atual do publicador. NAO baixa aulas.
 // Precisa de sessao (usa o token do login para consultar o publicador). Devolve
 // { total, resultados:[{id, situacao, paginas}] } — a aba marca os "desatualizado".
-app.get("/api/acervo/verificar-updates", async (_req, res) => {
-  if (!exigirSessao(res)) return;
+app.get("/api/acervo/verificar-updates", async (req, res) => {
+  if (!exigirSessao(req, res)) return;
   try {
     const itens = await lerAcervo();
     if (!itens.length) return res.json({ total: 0, resultados: [] });
@@ -511,8 +604,8 @@ app.get("/api/acervo/:id/estrutura", async (req, res) => {
 // Corrige os indice.json antigos que nao tem classificacao real. Faz UMA varredura
 // completa do catalogo (por segmento, para o discipline certo — Infantil=27) e
 // cruza por id com o que esta no disco, reescrevendo so os metadados.
-app.post("/api/acervo/reindexar", async (_req, res) => {
-  if (!exigirSessao(res)) return;
+app.post("/api/acervo/reindexar", async (req, res) => {
+  if (!exigirSessao(req, res)) return;
   try {
     // 1. Ler o acervo atual (lista de zips).
     const base = path.join(obterRaizAcervo(), PASTA_CONTEUDOS_OFFLINE);
@@ -526,7 +619,7 @@ app.post("/api/acervo/reindexar", async (_req, res) => {
     //    disciplinas expostas (Matematica, Portugues, ...) porque o acervo pode ter
     //    conteudo de qualquer uma — reindexar so Matematica deixaria os demais sem
     //    reclassificacao ("nao encontrado" a toa).
-    const taxonomia = await estruturaFiltro(sessao.token, 1);
+    const taxonomia = await estruturaFiltro(req.sessao.token, 1);
     const segmentos = (taxonomia?.data || []).map(s => ({
       id: s.id,
       infantil: segmentoEhInfantil(s?.name)
@@ -542,7 +635,7 @@ app.post("/api/acervo/reindexar", async (_req, res) => {
             disciplinaSerieId: null,
             disciplinaId: disc.id
           });
-          const r = await varrerCatalogo(sessao.token, {
+          const r = await varrerCatalogo(req.sessao.token, {
             tipo,
             discipline,
             segment: seg.id,
@@ -606,8 +699,12 @@ app.post("/api/acervo/reindexar", async (_req, res) => {
   }
 });
 
-const servidorHttp = app.listen(PORTA, "127.0.0.1", () => {
-  console.log(`[acervo] servidor em http://127.0.0.1:${PORTA}`);
+// Bind: local fica em 127.0.0.1 (so a propria maquina). No Render (e qualquer host),
+// precisa aceitar conexoes externas -> 0.0.0.0. Controlado por HOST; o Render deve
+// definir HOST=0.0.0.0 nas envs. Default local, mais seguro para uso no PC.
+const HOST = process.env.HOST || "127.0.0.1";
+const servidorHttp = app.listen(PORTA, HOST, () => {
+  console.log(`[acervo] servidor em http://${HOST}:${PORTA}`);
   console.log(`[acervo] acervo em ${obterRaizAcervo()}`);
 });
 

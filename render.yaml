@@ -1,0 +1,81 @@
+# Deploy do downloader de acervo no Render (dois servicos a partir deste repo).
+#
+# PROTOTIPO multiusuario. Ver observacoes ao final antes de subir.
+#
+# Fluxo: o Static Site (frontend) fala com o Web Service (backend) por VITE_API_URL;
+# o cookie de sessao (acervo_sid) viaja cross-origin gracas ao CORS-com-credenciais
+# do backend (FRONTEND_URL) + SameSite=None;Secure (o Render serve HTTPS).
+#
+# PASSO MANUAL apos o 1o deploy: as URLs dos servicos so existem depois de criados.
+# Entao FRONTEND_URL (backend) e VITE_API_URL (frontend) ficam com `sync: false` —
+# preencha-as no painel do Render com a URL real do outro servico e re-deploy.
+
+services:
+  # ---------- BACKEND (Express) ----------
+  - type: web
+    name: acervo-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      # Aceitar conexoes externas (local usa 127.0.0.1; no Render precisa 0.0.0.0).
+      - key: HOST
+        value: "0.0.0.0"
+      # Cadeia TLS do backhomologa (o backend fala com o AVA por HTTPS).
+      - key: NODE_EXTRA_CA_CERTS
+        value: certificados/gsgccr6-alphassl-2025.pem
+      # Origem do frontend (para o CORS-com-credenciais). Preencher no painel apos
+      # criar o static site: https://acervo-frontend.onrender.com (ou o nome real).
+      - key: FRONTEND_URL
+        sync: false
+      # --- R2 (bucket REAL, por decisao do usuario). Preencher no painel. ---
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_PREFIXO
+        sync: false
+      # Backend do AVA que o downloader consulta (default homologa se ausente).
+      - key: ACERVO_BASE_BACKEND
+        sync: false
+
+  # ---------- FRONTEND (Vite/React, estatico) ----------
+  - type: web
+    name: acervo-frontend
+    runtime: static
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      # URL do backend no Render (para o front chamar a API cross-origin). Preencher
+      # no painel apos criar o web service: https://acervo-backend.onrender.com
+      - key: VITE_API_URL
+        sync: false
+    # SPA: qualquer rota cai no index.html.
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+
+# ---------------------------------------------------------------------------------
+# OBSERVACOES (prototipo — nao levar como producao):
+# - Disco EFEMERO: o `acervo/` local some a cada deploy/restart. Como o download sobe
+#   pro R2, isso e aceitavel — mas nao conte com o disco local persistir.
+# - Plano FREE hiberna apos ~15 min ociosos e tem timeout de request: um download em
+#   massa longo pode ser CORTADO. Para uso serio, plano pago sem sleep.
+# - Sessao em MEMORIA: um restart do backend desloga todos (refazem login).
+# - R2_SECRET vive no painel do Render (exposta a quem tem acesso ao painel). O gate
+#   role-1 filtra o LOGIN, mas as rotas respondem a quem tiver a URL + sessao valida.
+# ---------------------------------------------------------------------------------
