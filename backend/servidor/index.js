@@ -55,6 +55,10 @@ app.use((req, res, next) => {
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    // Sem isto, o JS cross-origin NAO consegue ler o Content-Disposition (o navegador
+    // esconde headers de resposta por padrao) — e o download da estrutura cairia no
+    // nome-fallback "acervo-<id>.zip" em vez do nome bonito "Nome da Aula [id].zip".
+    res.setHeader("Access-Control-Expose-Headers", "Content-Disposition");
   }
   if (req.method === "OPTIONS") {
     res.statusCode = permitida ? 204 : 403;
