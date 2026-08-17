@@ -30,7 +30,7 @@ services:
       - key: NODE_EXTRA_CA_CERTS
         value: certificados/gsgccr6-alphassl-2025.pem
       # Origem do frontend (para o CORS-com-credenciais). Preencher no painel apos
-      # criar o static site: https://acervo-frontend.onrender.com (ou o nome real).
+      # criar o static site: https://acervoconteudos.onrender.com (ou o nome real).
       - key: FRONTEND_URL
         sync: false
       # --- R2 (bucket REAL, por decisao do usuario). Preencher no painel. ---
@@ -52,7 +52,7 @@ services:
   # Static site: type:web + runtime:static, SEM `plan` — sites estaticos sao
   # gratuitos e nao aceitam o campo plan (senao: "no such plan free for service type web").
   - type: web
-    name: acervo-frontend
+    name: acervoconteudos
     runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
