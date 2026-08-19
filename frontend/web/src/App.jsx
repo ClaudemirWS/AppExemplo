@@ -37,7 +37,7 @@ export default function App() {
           <div className="marca">
             <img className="marca-logo" src="/logo-educandus-branco.png" alt="Educandus" />
             <span className="marca-divisor" aria-hidden="true" />
-            <span className="marca-tag">Acervo</span>
+            <span className="marca-tag">Acervo de Conteúdos</span>
           </div>
           <div className="cabecalho-user">
             <span className="usuario">
@@ -54,7 +54,7 @@ export default function App() {
             Catálogo
           </button>
           <button className={aba === "acervo" ? "ativa" : ""} onClick={() => setAba("acervo")}>
-            Acervo baixado
+            Acervo
           </button>
         </nav>
 

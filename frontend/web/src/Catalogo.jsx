@@ -90,6 +90,22 @@ function baixavel(item) {
   return item.convertido !== "NAO";
 }
 
+// Ordena séries pela PROGRESSÃO pedagógica (não alfabética/da taxonomia): Berçário →
+// Maternal → "N anos" (infantil) → "Nº Ano EF" (fundamental) → resto.
+function ordemSerie(nome) {
+  const s = String(nome || "").toLowerCase();
+  const n = Number((s.match(/\d+/) || [0])[0]);
+  if (s.includes("berç") || s.includes("berc")) return 0 + n;
+  if (s.includes("maternal")) return 100 + n;
+  if (s.includes("ano") && s.includes("ef")) return 300 + n;
+  if (s.includes("ano")) return 200 + n;
+  return 900;
+}
+function compararSerie(a, b) {
+  const da = ordemSerie(a), db = ordemSerie(b);
+  return da !== db ? da - db : String(a).localeCompare(b, "pt-BR");
+}
+
 export default function Catalogo() {
   const [segmentos, setSegmentos] = useState([]);
   const [disciplinasDisp, setDisciplinasDisp] = useState([]); // {id,rotulo} do servidor
@@ -151,7 +167,10 @@ export default function Catalogo() {
     () => segmentos.find(s => String(s.id) === String(segmento)) || null,
     [segmentos, segmento]
   );
-  const seriesDoSegmento = segAtual?.series || [];
+  const seriesDoSegmento = useMemo(
+    () => [...(segAtual?.series || [])].sort((a, b) => compararSerie(a.nome, b.nome)),
+    [segAtual]
+  );
 
   // Pre-selecao padrao (so na abertura): assim que a taxonomia da disciplina padrao
   // chega, seleciona o segmento por nome; quando as series desse segmento chegam,
@@ -206,14 +225,10 @@ export default function Catalogo() {
     }
   }
 
+  // Total de baixaveis no filtro inteiro (para a contagem "N baixáveis").
   const baixaveis = useMemo(() => (itens || []).filter(baixavel), [itens]);
-  // "Todos" e sobre a lista INTEIRA do filtro, nao a pagina — marcar todos marca
-  // mesmo quem esta em outra pagina (o download em massa usa `marcados`, que ja
-  // guarda ids de qualquer pagina).
-  const todosMarcados = baixaveis.length > 0 && baixaveis.every(i => marcados.has(i.id));
 
-  // Paginacao APENAS visual: fatia `itens` em 10 por pagina para exibir. A selecao
-  // e o download continuam operando sobre a lista completa.
+  // Paginacao APENAS visual: fatia `itens` em 10 por pagina para exibir.
   const POR_PAGINA = 10;
   const totalItens = (itens || []).length;
   const totalPaginas = Math.max(1, Math.ceil(totalItens / POR_PAGINA));
@@ -221,11 +236,23 @@ export default function Catalogo() {
   const inicio = (paginaAtual - 1) * POR_PAGINA;
   const paginados = (itens || []).slice(inicio, inicio + POR_PAGINA);
 
+  // "Marcar todos" age sobre a PAGINA VISIVEL (os baixaveis dos 10 exibidos), igual ao
+  // Acervo. A selecao PERSISTE ao trocar de pagina — dá para marcar varias paginas e
+  // baixar tudo junto (o download usa `marcados`, que guarda ids de qualquer pagina).
+  const baixaveisDaPagina = paginados.filter(baixavel);
+  const todosMarcados = baixaveisDaPagina.length > 0 && baixaveisDaPagina.every(i => marcados.has(i.id));
+
   // Nova varredura (itens trocam) volta para a pagina 1.
   useEffect(() => { setPagina(1); }, [itens]);
 
   function alternarTodos() {
-    setMarcados(todosMarcados ? new Set() : new Set(baixaveis.map(i => i.id)));
+    const ids = baixaveisDaPagina.map(i => i.id);
+    setMarcados(prev => {
+      const p = new Set(prev);
+      if (todosMarcados) ids.forEach(id => p.delete(id));
+      else ids.forEach(id => p.add(id));
+      return p;
+    });
   }
   function alternar(id) {
     setMarcados(prev => {
@@ -330,11 +357,6 @@ export default function Catalogo() {
             ))}
           </select>
         </div>
-        <div className="filtro busca">
-          <label>Busca (palavra inteira)</label>
-          <input value={busca} onChange={e => setBusca(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && varrer()} placeholder="nome, tag, autor..." />
-        </div>
         <button className="primario" onClick={varrer} disabled={carregando}>
           {carregando ? "Varrendo..." : "Listar"}
         </button>
@@ -360,9 +382,22 @@ export default function Catalogo() {
             {itens.length} conteúdos · {baixaveis.length} baixáveis · {marcados.size} marcados
             {totalPaginas > 1 ? ` · pag. ${paginaAtual}/${totalPaginas}` : ""}
           </span>
+          <div className="busca-wrap barra-busca">
+            <input
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && varrer()}
+              placeholder="nome, tag, autor... (Enter para buscar)"
+            />
+            {busca && (
+              <button type="button" className="busca-limpar" title="Limpar busca" onClick={() => setBusca("")}>
+                ×
+              </button>
+            )}
+          </div>
           <div className="espaco" />
-          <button onClick={alternarTodos} disabled={!baixaveis.length}>
-            {todosMarcados ? "Desmarcar todos" : "Marcar todos"}
+          <button onClick={alternarTodos} disabled={!baixaveisDaPagina.length}>
+            {todosMarcados ? "Desmarcar página" : "Marcar página"}
           </button>
           <button
             className={temBaixadoMarcado ? "" : "primario"}

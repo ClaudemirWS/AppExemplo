@@ -126,9 +126,13 @@ input:focus, select:focus {
   display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px;
   padding: 14px 16px; background: var(--bg-2); border: 1px solid var(--linha); border-radius: var(--raio);
 }
-.filtro { display: flex; flex-direction: column; gap: 6px; }
+/* Colunas flexíveis: cada filtro cresce igualmente e ENCOLHE (min-width:0) para caber
+   todos numa linha só; o flex-wrap continua como rede de segurança em telas estreitas.
+   Selects com opção longa (ex.: "Ensino Fundamental Anos Iniciais") truncam em vez de
+   esticar a coluna. */
+.filtro { display: flex; flex-direction: column; gap: 6px; flex: 1 1 140px; min-width: 0; }
 .filtro label { font-size: 12px; color: var(--txt-2); font-weight: 500; }
-.filtro select, .filtro input { min-width: 160px; }
+.filtro select, .filtro input { width: 100%; min-width: 0; }
 
 /* Busca por id/nome: input com botao de limpar sobreposto. */
 .filtro-busca .busca-wrap { position: relative; display: inline-flex; }
@@ -142,11 +146,16 @@ input:focus, select:focus {
 
 /* ---------- BARRA DE ACAO (contagem + botoes) ---------- */
 .barra-acao {
-  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
   padding: 11px 14px; background: var(--bg-2); border: 1px solid var(--linha); border-radius: var(--raio);
 }
-.barra-acao .contagem { color: var(--txt-2); font-size: 13px; }
+.barra-acao .contagem { color: var(--txt-2); font-size: 13px; white-space: nowrap; }
 .barra-acao .espaco { flex: 1; }
+
+/* Busca movida dos filtros para a barra de ação (economiza uma linha nos filtros).
+   Cresce para ocupar o vão entre a contagem e os botões, com teto para não esticar demais. */
+.barra-busca { flex: 1 1 200px; min-width: 180px; max-width: 460px; display: flex; position: relative; }
+.barra-busca input { flex: 1; min-width: 0; padding-right: 28px; }
 
 /* ---------- PAGINACAO ---------- */
 .paginacao { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; }

@@ -253,6 +253,23 @@ function CelulaExpansivel({ aberto, onAlternar, resumo, titulo, linhas, alerta =
   );
 }
 
+// Ordena séries pela PROGRESSÃO pedagógica, não alfabética: Berçário → Maternal →
+// "N anos" (infantil) → "Nº Ano EF" (fundamental) → resto. O .sort() puro jogava
+// "3 anos" no meio dos "Nº Ano" e "Berçário 1" pro fim.
+function ordemSerie(nome) {
+  const s = String(nome || "").toLowerCase();
+  const n = Number((s.match(/\d+/) || [0])[0]);
+  if (s.includes("berç") || s.includes("berc")) return 0 + n;   // Berçário 1/2
+  if (s.includes("maternal")) return 100 + n;                   // Maternal
+  if (s.includes("ano") && s.includes("ef")) return 300 + n;    // Nº Ano EF (fundamental)
+  if (s.includes("ano")) return 200 + n;                        // "N anos" (infantil)
+  return 900;                                                   // desconhecido → fim
+}
+function compararSerie(a, b) {
+  const da = ordemSerie(a), db = ordemSerie(b);
+  return da !== db ? da - db : String(a).localeCompare(b, "pt-BR");
+}
+
 export default function Acervo() {
   const [itens, setItens] = useState(null);
   const [erro, setErro] = useState("");
@@ -272,6 +289,7 @@ export default function Acervo() {
   const [parandoAtualizacao, setParandoAtualizacao] = useState(false);
   const [aviso, setAviso] = useState("");
   const [fTipo, setFTipo] = useState(""); // "" = todos, "1" = Aula, "2" = Jogo
+  const [fComponente, setFComponente] = useState(""); // "" = todos; nome da disciplina
   const [fSegmento, setFSegmento] = useState("");
   const [fSerie, setFSerie] = useState("");
   const [fAtualizacao, setFAtualizacao] = useState(""); // "", "atualizar", "em-dia", "nunca"
@@ -456,18 +474,26 @@ export default function Acervo() {
 
   const opcoesSerie = useMemo(() => {
     if (fSegmento && seriesPorSegmento.has(fSegmento)) {
-      return [...seriesPorSegmento.get(fSegmento)].sort();
+      return [...seriesPorSegmento.get(fSegmento)].sort(compararSerie);
     }
     const todas = new Set();
     for (const set of seriesPorSegmento.values()) for (const s of set) todas.add(s);
-    return [...todas].sort();
+    return [...todas].sort(compararSerie);
   }, [fSegmento, seriesPorSegmento]);
+
+  // Componentes (disciplinas) presentes no acervo — derivados dos proprios itens.
+  const opcoesComponente = useMemo(() => {
+    const nomes = new Set();
+    for (const item of itens || []) if (item.disciplina) nomes.add(item.disciplina);
+    return [...nomes].sort();
+  }, [itens]);
 
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase();
     return (itens || []).filter(item => {
       // tipoId ausente conta como Aula (1) — o mesmo default do resto do app.
       if (fTipo && String(item.tipoId ?? 1) !== fTipo) return false;
+      if (fComponente && item.disciplina !== fComponente) return false;
       if (fSegmento && !segmentosDoItem(item).includes(fSegmento)) return false;
       if (fSerie && !seriesDoItem(item).includes(fSerie)) return false;
       // Filtro por situacao da ULTIMA verificacao (persistida em `updates`).
@@ -485,7 +511,7 @@ export default function Acervo() {
       }
       return true;
     });
-  }, [itens, fTipo, fSegmento, fSerie, busca, fAtualizacao, updates]);
+  }, [itens, fTipo, fComponente, fSegmento, fSerie, busca, fAtualizacao, updates]);
 
   // Paginacao do acervo: 10 por pagina. `pagina` e limitada ao total; a fatia sai
   // do `filtrados` (o filtro roda antes da paginacao).
@@ -516,7 +542,7 @@ export default function Acervo() {
   }
 
   // Volta a pagina 1 quando o filtro ou a busca mudam — senao ficaria numa pagina que sumiu.
-  useEffect(() => { setPagina(1); }, [fTipo, fSegmento, fSerie, busca, fAtualizacao]);
+  useEffect(() => { setPagina(1); }, [fTipo, fComponente, fSegmento, fSerie, busca, fAtualizacao]);
   // Fecha qualquer popover ao trocar de pagina (o item pode nem estar mais na tela).
   useEffect(() => { setExpandido(null); }, [paginaAtual]);
 
@@ -540,21 +566,12 @@ export default function Acervo() {
                 <option value="2">Jogo</option>
               </select>
             </div>
-            <div className="filtro filtro-busca">
-              <label>Buscar</label>
-              <div className="busca-wrap">
-                <input
-                  type="text"
-                  value={busca}
-                  onChange={e => setBusca(e.target.value)}
-                  placeholder="id ou nome do conteúdo"
-                />
-                {busca && (
-                  <button type="button" className="busca-limpar" title="Limpar busca" onClick={() => setBusca("")}>
-                    ×
-                  </button>
-                )}
-              </div>
+            <div className="filtro">
+              <label>Componente</label>
+              <select value={fComponente} onChange={e => setFComponente(e.target.value)}>
+                <option value="">Todos</option>
+                {opcoesComponente.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
             </div>
             <div className="filtro">
               <label>Segmento</label>
@@ -586,9 +603,22 @@ export default function Acervo() {
               {filtrados.length
                 ? `${inicio + 1}–${inicio + paginados.length} de ${filtrados.length}`
                 : "0"} conteúdos
-              {(fTipo || fSegmento || fSerie || fAtualizacao || busca.trim()) ? ` (filtrado de ${itens.length})` : ""}
+              {(fTipo || fComponente || fSegmento || fSerie || fAtualizacao || busca.trim()) ? ` (filtrado de ${itens.length})` : ""}
               {selecionados.size ? ` · ${selecionados.size} selecionada(s)` : ""}
             </span>
+            <div className="busca-wrap barra-busca">
+              <input
+                type="text"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+                placeholder="id ou nome do conteúdo"
+              />
+              {busca && (
+                <button type="button" className="busca-limpar" title="Limpar busca" onClick={() => setBusca("")}>
+                  ×
+                </button>
+              )}
+            </div>
             <div className="espaco" />
             {atualizando ? (
               <button onClick={pararAtualizacao} disabled={parandoAtualizacao}>
