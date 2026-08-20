@@ -210,7 +210,8 @@ export default function Catalogo() {
         tipo,
         segment: segmento,
         serie: serieAlvo,
-        word: busca,
+        // Busca e client-side agora (filtro instantaneo sobre a lista carregada), entao
+        // NAO mandamos `word` ao servidor — a varredura traz tudo do filtro e o front filtra.
         infantil: segAtual?.infantil ? "true" : "",
         disciplina,
         disciplinaSerie: serieObj?.disciplinaSerieId || ""
@@ -225,16 +226,28 @@ export default function Catalogo() {
     }
   }
 
-  // Total de baixaveis no filtro inteiro (para a contagem "N baixáveis").
-  const baixaveis = useMemo(() => (itens || []).filter(baixavel), [itens]);
+  // Busca INSTANTE no cliente (id/nome), sobre a lista ja carregada. O Catalogo varre
+  // TODAS as paginas do filtro, entao `itens` e o conjunto completo — filtrar aqui e
+  // imediato e completo, igual ao Acervo (nao precisa re-varrer o servidor).
+  const filtrados = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return itens || [];
+    return (itens || []).filter(i =>
+      String(i.id || "").toLowerCase().includes(termo) ||
+      String(i.nome || "").toLowerCase().includes(termo)
+    );
+  }, [itens, busca]);
 
-  // Paginacao APENAS visual: fatia `itens` em 10 por pagina para exibir.
+  // Baixaveis do conjunto exibido (para a contagem "N baixáveis").
+  const baixaveis = useMemo(() => filtrados.filter(baixavel), [filtrados]);
+
+  // Paginacao APENAS visual: fatia `filtrados` em 10 por pagina para exibir.
   const POR_PAGINA = 10;
-  const totalItens = (itens || []).length;
+  const totalItens = filtrados.length;
   const totalPaginas = Math.max(1, Math.ceil(totalItens / POR_PAGINA));
   const paginaAtual = Math.min(pagina, totalPaginas);
   const inicio = (paginaAtual - 1) * POR_PAGINA;
-  const paginados = (itens || []).slice(inicio, inicio + POR_PAGINA);
+  const paginados = filtrados.slice(inicio, inicio + POR_PAGINA);
 
   // "Marcar todos" age sobre a PAGINA VISIVEL (os baixaveis dos 10 exibidos), igual ao
   // Acervo. A selecao PERSISTE ao trocar de pagina — dá para marcar varias paginas e
@@ -242,8 +255,8 @@ export default function Catalogo() {
   const baixaveisDaPagina = paginados.filter(baixavel);
   const todosMarcados = baixaveisDaPagina.length > 0 && baixaveisDaPagina.every(i => marcados.has(i.id));
 
-  // Nova varredura (itens trocam) volta para a pagina 1.
-  useEffect(() => { setPagina(1); }, [itens]);
+  // Nova varredura (itens trocam) ou nova busca voltam para a pagina 1.
+  useEffect(() => { setPagina(1); }, [itens, busca]);
 
   function alternarTodos() {
     const ids = baixaveisDaPagina.map(i => i.id);
@@ -379,15 +392,14 @@ export default function Catalogo() {
       {itens && (
         <div className="barra-acao">
           <span className="contagem">
-            {itens.length} conteúdos · {baixaveis.length} baixáveis · {marcados.size} marcados
+            {filtrados.length} conteúdos{busca.trim() ? ` (de ${itens.length})` : ""} · {baixaveis.length} baixáveis · {marcados.size} marcados
             {totalPaginas > 1 ? ` · pag. ${paginaAtual}/${totalPaginas}` : ""}
           </span>
           <div className="busca-wrap barra-busca">
             <input
               value={busca}
               onChange={e => setBusca(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && varrer()}
-              placeholder="nome, tag, autor... (Enter para buscar)"
+              placeholder="id ou nome do conteúdo"
             />
             {busca && (
               <button type="button" className="busca-limpar" title="Limpar busca" onClick={() => setBusca("")}>
@@ -422,8 +434,12 @@ export default function Catalogo() {
       {carregando && <div className="carregando">Varrendo o catálogo (todas as páginas)...</div>}
 
       {itens && !carregando && (
-        itens.length === 0 ? (
-          <div className="vazio">Nenhum conteúdo para este filtro.</div>
+        filtrados.length === 0 ? (
+          <div className="vazio">
+            {busca.trim()
+              ? "Nenhum conteúdo bate com a busca."
+              : "Nenhum conteúdo para este filtro."}
+          </div>
         ) : (
           <div className="tabela-wrap">
             <table>
