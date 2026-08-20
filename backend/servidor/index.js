@@ -368,6 +368,12 @@ app.post("/api/download", async (req, res) => {
 
   const deveParar = () => clienteDesconectou || paradoPeloUsuario();
 
+  // Ids baixados com sucesso: ao baixar, a copia local passa a ser a versao publicada
+  // mais recente, entao a aula fica "em dia". Persistimos isso no fim (registrarVerificacoes)
+  // para a coluna "Atualizacao" refletir "em dia" com a data de agora, sem exigir um
+  // Verificar manual depois.
+  const baixadosOk = [];
+
   for (const [indice, id] of ids.entries()) {
     if (deveParar()) {
       console.warn(`[AVA_DOWNLOAD] FILA_INTERROMPIDA no indice ${indice} (id=${id}) — ${paradoPeloUsuario() ? "parado pelo usuario" : "cliente desconectou"}`);
@@ -409,6 +415,7 @@ app.post("/api/download", async (req, res) => {
           console.warn(`[AVA_DOWNLOAD] INDISP_LIMPAR_FALHOU id=${id}: ${e?.message || e}`);
         }
         sucesso = true;
+        baixadosOk.push(id);
         break;
       } catch (erro) {
         ultimoErro = erro;
@@ -457,6 +464,20 @@ app.post("/api/download", async (req, res) => {
     } else if (!sucesso && paradoPeloUsuario()) {
       enviar("item-fim", { id, status: "cancelado" });
     }
+  }
+
+  // Marca os baixados como "em dia" (versao recem-baixada = a mais recente), com a data
+  // de agora. Assim o "Atualizar" do acervo reflete na coluna "Atualizacao" sem precisar
+  // de um Verificar manual. Best-effort: falha aqui nao invalida o download.
+  if (baixadosOk.length) {
+    try {
+      await registrarVerificacoes(baixadosOk.map(id => ({ id, situacao: "atualizado", paginas: [] })));
+      console.info(`[AVA_DOWNLOAD] VERIFICACAO_ATUALIZADO ok ids=${baixadosOk.join(",")}`);
+    } catch (e) {
+      console.warn(`[AVA_DOWNLOAD] VERIFICACAO_ATUALIZADO_FALHOU: ${e?.message || e}`);
+    }
+  } else {
+    console.info(`[AVA_DOWNLOAD] VERIFICACAO_ATUALIZADO pulado (nenhum baixado com sucesso)`);
   }
 
   const foiCancelado = clienteDesconectou || paradoPeloUsuario();

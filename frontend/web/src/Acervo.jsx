@@ -438,7 +438,22 @@ export default function Acervo() {
       "item-inicio": ({ id }) => setEstadosDownload(p => ({ ...p, [id]: { status: "baixando", pct: 0 } })),
       progresso: ({ id, pct, retentando }) =>
         setEstadosDownload(p => ({ ...p, [id]: { status: "baixando", pct, retentando } })),
-      "item-fim": d => setEstadosDownload(p => ({ ...p, [d.id]: d })),
+      "item-fim": d => {
+        setEstadosDownload(p => ({ ...p, [d.id]: d }));
+        // Baixou com sucesso = versao mais recente = "em dia". Marca na hora (o backend
+        // tambem persiste isso; o carregar() do fim so confirma). Se falhou, nao marca.
+        if (d.status === "ok") {
+          setUpdates(prev => {
+            const m = new Map(prev);
+            m.set(String(d.id), {
+              situacao: "atualizado",
+              verificadoEm: new Date().toISOString(),
+              paginasDesatualizadas: []
+            });
+            return m;
+          });
+        }
+      },
       fim: () => { setAtualizando(false); setCancelarAtualizacao(null); carregar(); },
       erro: ({ motivo }) => { setErro(motivo); setAtualizando(false); setCancelarAtualizacao(null); carregar(); }
     });
