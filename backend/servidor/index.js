@@ -284,21 +284,52 @@ app.get("/api/catalogo", async (req, res) => {
     const { tipo, segment, serie, word, infantil, disciplina, disciplinaSerie } = req.query;
     const temSegmento = Boolean(segment);
     const temSerie = Boolean(serie);
-    const discipline = resolverDiscipline({
-      temSegmento,
-      ehInfantil: infantil === "true" || infantil === "1",
-      temSerie,
-      disciplinaSerieId: disciplinaSerie ? Number(disciplinaSerie) : null,
-      disciplinaId: disciplina ? Number(disciplina) : DISCIPLINA_MATEMATICA
-    });
-    const resultado = await varrerCatalogo(req.sessao.token, {
-      tipo: tipo ? Number(tipo) : 1,
-      discipline,
-      segment: temSegmento ? Number(segment) : null,
-      serie: temSerie ? Number(serie) : null,
-      word: word || ""
-    });
-    res.json(resultado);
+    const ehInfantil = infantil === "true" || infantil === "1";
+
+    // "Todos": tipo vazio => Aula(1) + Jogo(2); disciplina vazia => todas as disciplinas.
+    // O AVA exige type e discipline especificos por scan, entao varremos cada combinacao
+    // e mesclamos por id (mesma tatica do reindex). Com filtros unicos, e um scan so.
+    const tipos = tipo ? [Number(tipo)] : [1, 2];
+    const disciplinas = disciplina ? [Number(disciplina)] : listarDisciplinas().map(d => d.id);
+
+    const porId = new Map();
+    let paginasLidas = 0;
+    let truncado = false;
+
+    for (const t of tipos) {
+      for (const dId of disciplinas) {
+        const discipline = resolverDiscipline({
+          temSegmento,
+          ehInfantil,
+          temSerie,
+          disciplinaSerieId: disciplinaSerie ? Number(disciplinaSerie) : null,
+          disciplinaId: dId
+        });
+        const r = await varrerCatalogo(req.sessao.token, {
+          tipo: t,
+          discipline,
+          segment: temSegmento ? Number(segment) : null,
+          serie: temSerie ? Number(serie) : null,
+          word: word || ""
+        });
+        paginasLidas += r.paginasLidas;
+        truncado = truncado || r.truncado;
+        for (const item of r.itens) {
+          const existente = porId.get(item.id);
+          if (!existente) { porId.set(item.id, item); continue; }
+          // Ja visto (outra disciplina/tipo): acumula classificacoes novas.
+          for (const c of item.classificacoes || []) {
+            const jaTem = existente.classificacoes.some(
+              x => (x.segmentoId ?? "") === (c.segmentoId ?? "") && (x.serieId ?? "") === (c.serieId ?? "")
+            );
+            if (!jaTem) existente.classificacoes.push(c);
+          }
+        }
+      }
+    }
+
+    const itens = [...porId.values()];
+    res.json({ itens, total: itens.length, paginasLidas, truncado });
   } catch (erro) {
     res.status(502).json({ erro: erro.message });
   }

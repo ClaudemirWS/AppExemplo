@@ -154,11 +154,13 @@ export default function Catalogo() {
   }, []);
 
   // A taxonomia (segmentos/series) depende da disciplina: refaz ao troca-la. Trocar
-  // de componente zera segmento/serie (as series de uma disciplina nao valem p/ outra).
+  // de componente zera segmento/serie. Com "Todos" (disciplina vazia) carregamos a
+  // taxonomia de Matematica ("1") so para popular os dropdowns — os ids de segmento/
+  // serie sao compartilhados entre disciplinas (o scan de "Todos" varre cada uma).
   useEffect(() => {
     setSegmento("");
     setSerie("");
-    api.taxonomia(disciplina)
+    api.taxonomia(disciplina || "1")
       .then(t => setSegmentos(t.segmentos || []))
       .catch(() => {});
   }, [disciplina]);
@@ -344,6 +346,7 @@ export default function Catalogo() {
         <div className="filtro">
           <label>Tipo de conteúdo</label>
           <select value={tipo} onChange={e => setTipo(e.target.value)}>
+            <option value="">Todos</option>
             <option value="1">Aula</option>
             <option value="2">Jogo</option>
           </select>
@@ -365,6 +368,7 @@ export default function Catalogo() {
         <div className="filtro">
           <label>Componente</label>
           <select value={disciplina} onChange={e => setDisciplina(e.target.value)}>
+            <option value="">Todos</option>
             {disciplinasDisp.map(d => (
               <option key={d.id} value={String(d.id)}>{d.rotulo}</option>
             ))}
