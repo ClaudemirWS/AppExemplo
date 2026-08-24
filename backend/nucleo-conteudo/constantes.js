@@ -19,12 +19,15 @@ export const ATRASO_RETRY_MS = Number(process.env.ACERVO_ATRASO_RETRY_MS || 800)
 export const EXTENSOES_TEXTO = /\.(?:html?|css|js|mjs|json|xml|svg|txt|appcache|webmanifest)(?:[?#].*)?$/i;
 export const EXTENSOES_RECURSO =
   /\.(?:html?|png|jpe?g|gif|webp|svg|json|js|mjs|css|xml|mp3|m4a|ogg|wav|webm|mp4|wasm|ttf|otf|woff2?|appcache|webmanifest|glb|gltf|bin)(?:[?#].*)?$/i;
-export const DIRETORIOS_COMUNS = ["assets/", "css/", "js/", "xml/", "libs/", "images/", "media/", "icons/", "sounds/"];
+// `sons/` (em portugues) e das aulas Animate da Educandus: os mp3 sao referenciados
+// DINAMICAMENTE no JS ("sons/"+nome+".mp3"), que o crawler nao extrai — so sao pegos
+// espelhando a pasta por listagem. Sem `sons/` aqui a aula baixava SEM AUDIO.
+export const DIRETORIOS_COMUNS = ["assets/", "css/", "js/", "xml/", "libs/", "images/", "media/", "icons/", "sounds/", "sons/"];
 // Uniao dos dois conjuntos, para o espelho do publicador nao precisar saber o
 // formato antes de varrer. Listar um diretorio inexistente custa um 404.
 export const DIRETORIOS_ESPELHO = [
   "assets/", "css/", "js/", "xml/", "libs/",
-  "images/", "media/", "icons/", "sounds/", "scripts/", "videos/"
+  "images/", "media/", "icons/", "sounds/", "sons/", "scripts/", "videos/"
 ];
 // `images/` e `media/` sao do Construct 2; `icons/`, `scripts/`, `sounds/` e
 // `videos/`, do 3. A lista serve aos dois: um diretorio que nao existe apenas nao

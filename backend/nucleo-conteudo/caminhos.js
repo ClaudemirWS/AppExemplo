@@ -32,7 +32,7 @@ export function obterDiretorioUrl(url) {
 // decode padrao lanca URIError e derrubava a pagina inteira (SPEC 23.12). Aqui,
 // falhando, mantemos a string como veio — feio no nome, mas funciona porque
 // gravacao e leitura usam a mesma string.
-function decodificarTolerante(texto) {
+export function decodificarTolerante(texto) {
   try {
     return decodeURIComponent(texto);
   } catch {

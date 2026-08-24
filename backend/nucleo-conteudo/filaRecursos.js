@@ -1,6 +1,6 @@
 import { HOSTS_VENDOR, PASTA_VENDOR_OFFLINE, VENDOR_THREE_0129 } from "./constantes.js";
 import { obterBaseServidorConteudoLocal, usandoNativo } from "./ambiente.js";
-import { normalizarCaminhoArquivo, obterCaminhoRelativo, resolverUrl } from "./caminhos.js";
+import { normalizarCaminhoArquivo, obterCaminhoRelativo, resolverUrl, decodificarTolerante } from "./caminhos.js";
 import { normalizarCharsetHtml } from "./httpConteudo.js";
 import { recursoDinamicoInvalido } from "./recursosHtml.js";
 import { formatoPermiteVendor } from "./politicasFormato.js";
@@ -123,7 +123,7 @@ export function reescreverTextoParaArquivosLocais(texto, caminhoArquivo, recurso
       const url = new URL(recurso.url);
       if (!recurso.vendor && originalEhCaminhoAbsoluto) {
         textoReescrito = textoReescrito.split(`${url.pathname}${url.search}`).join(relativo);
-        textoReescrito = textoReescrito.split(decodeURIComponent(url.pathname)).join(relativo);
+        textoReescrito = textoReescrito.split(decodificarTolerante(url.pathname)).join(relativo);
       }
     } catch {
       // Recurso invalido ja foi descartado antes de chegar aqui.
