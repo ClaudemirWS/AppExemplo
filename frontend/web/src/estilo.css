@@ -332,3 +332,40 @@ tr.linha-selecionada:hover td { background: rgba(76, 141, 255, 0.14); }
   animation: girar .6s linear infinite; display: inline-block;
 }
 @keyframes girar { to { transform: rotate(360deg); } }
+
+/* Toast do download publicavel (canto inferior direito) — combina com o acervo. */
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 50;
+  width: min(340px, calc(100vw - 40px));
+  background: var(--bg-2);
+  border: 1px solid var(--linha);
+  border-left: 3px solid var(--acento);
+  border-radius: var(--raio);
+  box-shadow: var(--sombra);
+  padding: 14px 34px 14px 16px;
+  animation: toast-entra .18s ease-out;
+}
+.toast-ok { border-left-color: var(--verde); }
+.toast-erro { border-left-color: var(--vermelho); }
+.toast-titulo { font-weight: 600; font-size: 13px; color: var(--txt); margin-bottom: 3px; }
+.toast-msg { font-size: 12px; color: var(--txt-2); }
+.toast-erro .toast-msg { color: #ffb9a3; }
+.toast-barra {
+  margin-top: 10px; height: 6px; border-radius: 999px;
+  background: var(--bg-4); overflow: hidden;
+}
+.toast-barra-fill {
+  height: 100%; background: var(--acento); border-radius: 999px;
+  transition: width .25s ease;
+}
+.toast-fechar {
+  position: absolute; top: 8px; right: 8px;
+  width: 22px; height: 22px; padding: 0; line-height: 1;
+  background: transparent; border: 0; color: var(--txt-2);
+  font-size: 17px; cursor: pointer; border-radius: var(--raio-sm);
+}
+.toast-fechar:hover { color: var(--txt); background: var(--bg-4); }
+@keyframes toast-entra { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }

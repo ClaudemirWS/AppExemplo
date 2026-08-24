@@ -3,7 +3,9 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { promises as fs } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { login, estruturaFiltro } from "./avaApi.js";
+import { login, estruturaFiltro, listarPaginas, verConteudo } from "./avaApi.js";
+import { normalizarDetalhesConteudo } from "../nucleo-conteudo/normalizacaoPaginas.js";
+import { montarZipPublicavel, PaginaSemVersaoError } from "./espelhoPublicavel.js";
 import { varrerCatalogo } from "./catalogo.js";
 import { baixarConteudo, montarClassificacao } from "./baixarConteudo.js";
 import { obterRaizAcervo } from "../adaptadores/fsAcervo.js";
@@ -742,6 +744,89 @@ app.get("/api/acervo/:id/estrutura", async (req, res) => {
     if (res.headersSent) { res.end(); }
     else { res.status(500).json({ erro: erro.message }); }
   }
+});
+
+// --- Download PUBLICAVEL (aulas Animate): mirror verbatim do publicador ---
+// Duas etapas on-demand (nada persiste no R2): este SSE PREPARA o zip (progresso por
+// pagina) e guarda os bytes num cache efemero por token; o cliente baixa via
+// /publicavel/zip?token=. So o front chama isto para aulas Animate; as demais seguem
+// pelo /estrutura (zip do R2 reescrito para PWA).
+const ZIPS_PUBLICAVEIS = new Map(); // token -> { nome, bytes, expira }
+const TTL_ZIP_PUBLICAVEL_MS = 3 * 60 * 1000;
+
+function guardarZipPublicavel(nome, bytes) {
+  const token = crypto.randomUUID();
+  ZIPS_PUBLICAVEIS.set(token, { nome, bytes, expira: Date.now() + TTL_ZIP_PUBLICAVEL_MS });
+  for (const [t, v] of ZIPS_PUBLICAVEIS) if (v.expira <= Date.now()) ZIPS_PUBLICAVEIS.delete(t);
+  return token;
+}
+
+app.get("/api/acervo/:id/publicavel", async (req, res) => {
+  if (!exigirSessao(req, res)) return;
+  const id = String(req.params.id || "");
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no"
+  });
+  res.flushHeaders?.();
+  const enviar = (evento, dados) => {
+    res.write(`event: ${evento}\ndata: ${JSON.stringify(dados)}\n\n`);
+    res.flush?.();
+  };
+
+  try {
+    const [respostaPaginas, respostaSingle] = await Promise.all([
+      listarPaginas(req.sessao.token, id),
+      verConteudo(req.sessao.token, id).catch(() => null)
+    ]);
+    const singleView = respostaSingle?.data?.los || respostaSingle?.data || null;
+    const detalhes = normalizarDetalhesConteudo(respostaPaginas, { id }, singleView);
+    const total = (detalhes.paginas || []).filter(p => p.externalId).length;
+
+    if (!total) {
+      enviar("erro", { motivo: "Aula sem páginas versionáveis (sem external_id)." });
+      return res.end();
+    }
+
+    enviar("inicio", { total });
+
+    const { nome, bytesZip } = await montarZipPublicavel({
+      detalhes,
+      onPagina: (pagina, totalPaginas, nomePagina) =>
+        enviar("pagina", { pagina, total: totalPaginas, nome: nomePagina })
+    });
+
+    const token = guardarZipPublicavel(nome, Buffer.from(bytesZip));
+    enviar("pronto", { token, nome });
+    res.end();
+  } catch (erro) {
+    const motivo =
+      erro instanceof PaginaSemVersaoError
+        ? erro.message
+        : erro?.message || "Falha ao preparar download publicável.";
+    if (!(erro instanceof PaginaSemVersaoError)) {
+      console.warn(`[AVA_DOWNLOAD] PUBLICAVEL_ERRO id=${id} motivo=${motivo}`);
+    }
+    enviar("erro", { motivo });
+    if (!res.writableEnded) res.end();
+  }
+});
+
+app.get("/api/acervo/:id/publicavel/zip", (req, res) => {
+  if (!exigirSessao(req, res)) return;
+  const token = String(req.query.token || "");
+  const item = ZIPS_PUBLICAVEIS.get(token);
+  if (!item || item.expira <= Date.now()) {
+    ZIPS_PUBLICAVEIS.delete(token);
+    return res.status(404).json({ erro: "Download publicável expirado ou não encontrado. Gere novamente." });
+  }
+  ZIPS_PUBLICAVEIS.delete(token); // uso unico
+  res.setHeader("Content-Type", "application/zip");
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(item.nome)}`);
+  res.end(item.bytes);
 });
 
 // --- Reindexar o acervo (sem re-baixar) ---

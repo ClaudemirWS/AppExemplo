@@ -79,6 +79,77 @@ export async function baixarEstruturaLOs(id) {
   URL.revokeObjectURL(url);
 }
 
+// Download PUBLICAVEL (aulas Animate) via SSE: o servidor prepara o mirror verbatim do
+// publicador (progresso por pagina) e, ao concluir, devolve um token. Aqui lemos o
+// progresso e, no evento "pronto", buscamos o zip pelo token e disparamos o save.
+// Callbacks: inicio({total}), pagina({pagina,total,nome}), fim({nome}), erro({motivo}).
+// Retorna uma funcao para abortar.
+export function baixarPublicavel(id, callbacks = {}) {
+  const controlador = new AbortController();
+
+  fetch(`${BASE_API}/api/acervo/${encodeURIComponent(id)}/publicavel`, {
+    credentials: "include",
+    signal: controlador.signal
+  })
+    .then(async resposta => {
+      if (!resposta.ok || !resposta.body) {
+        const dados = await resposta.json().catch(() => ({}));
+        throw new Error(dados?.erro || `HTTP ${resposta.status}`);
+      }
+      const leitor = resposta.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      for (;;) {
+        const { done, value } = await leitor.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const blocos = buffer.split("\n\n");
+        buffer = blocos.pop() || "";
+        for (const bloco of blocos) {
+          const linhaEvento = bloco.match(/event: (.+)/)?.[1];
+          const linhaDados = bloco.match(/data: (.+)/)?.[1];
+          if (!linhaEvento || !linhaDados) continue;
+          const dados = JSON.parse(linhaDados);
+
+          if (linhaEvento === "pronto") {
+            await salvarZipPublicavel(id, dados.token, dados.nome);
+            callbacks.fim?.(dados);
+          } else {
+            callbacks[linhaEvento]?.(dados);
+          }
+        }
+      }
+    })
+    .catch(erro => {
+      if (erro.name !== "AbortError") callbacks.erro?.({ motivo: erro.message });
+    });
+
+  return () => controlador.abort();
+}
+
+// Busca o zip publicavel pelo token (uso unico) e dispara o save no cliente.
+async function salvarZipPublicavel(id, token, nome) {
+  const resposta = await fetch(
+    `${BASE_API}/api/acervo/${encodeURIComponent(id)}/publicavel/zip?token=${encodeURIComponent(token)}`,
+    { credentials: "include" }
+  );
+  if (!resposta.ok) {
+    const dados = await resposta.json().catch(() => ({}));
+    throw new Error(dados?.erro || `HTTP ${resposta.status}`);
+  }
+  const blob = await resposta.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome || `acervo-${id}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 // Download em massa via SSE. Recebe os ITENS selecionados (id + metadados de
 // serie/segmento/disciplina), para o servidor gravar a classificacao real no
 // acervo. Chama os callbacks conforme os eventos chegam.

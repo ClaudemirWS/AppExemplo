@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { api, baixarEmMassa, baixarEstruturaLOs } from "./api.js";
+import { api, baixarEmMassa, baixarEstruturaLOs, baixarPublicavel } from "./api.js";
 
 // Icones dos botoes de acao. SVG inline (nao emoji): herdam a cor branca via
 // `currentColor`, escalam nitido e nao dependem da fonte de emoji do SO — o 🗑
@@ -288,6 +288,9 @@ export default function Acervo() {
   const [cancelarAtualizacao, setCancelarAtualizacao] = useState(null);
   const [parandoAtualizacao, setParandoAtualizacao] = useState(false);
   const [aviso, setAviso] = useState("");
+  // Toast do download publicavel (canto): { estado:"progresso"|"ok"|"erro", pagina,
+  // total, nomePagina, nomeAula, msg }. Some sozinho em 10s nos estados terminais.
+  const [toast, setToast] = useState(null);
   const [fTipo, setFTipo] = useState(""); // "" = todos, "1" = Aula, "2" = Jogo
   const [fComponente, setFComponente] = useState(""); // "" = todos; nome da disciplina
   const [fSegmento, setFSegmento] = useState("");
@@ -324,15 +327,36 @@ export default function Acervo() {
 
   useEffect(carregar, []);
 
-  // Baixa a estrutura de LOs (zip). Via fetch em BASE_API (nao window.location, que
-  // no Render cairia no frontend). Mostra erro se falhar — antes falhava em silencio.
+  // Uma aula e Animate se qualquer pagina detectada e do formato Animate. So essas
+  // ganham o download PUBLICAVEL (mirror verbatim do publicador, para republicar).
+  function ehAnimate(item) {
+    const fs = item.formatos?.length ? item.formatos : [item.formato].filter(Boolean);
+    return fs.includes("animate-autonomo");
+  }
+
+  // Baixa a estrutura de LOs (zip). Duas vias:
+  //   - Animate -> download PUBLICAVEL (mirror verbatim on-demand do publicador), com
+  //     progresso no toast; o zip sai pronto para instrumentar e republicar.
+  //   - demais  -> comportamento atual (zip do R2, reescrito para o PWA).
   async function baixarEstrutura(item) {
     setErro("");
-    try {
-      await baixarEstruturaLOs(item.id);
-    } catch (err) {
-      setErro(`Falha ao baixar "${item.nome}": ${err.message}`);
+
+    if (!ehAnimate(item)) {
+      try {
+        await baixarEstruturaLOs(item.id);
+      } catch (err) {
+        setErro(`Falha ao baixar "${item.nome}": ${err.message}`);
+      }
+      return;
     }
+
+    setToast({ estado: "progresso", pagina: 0, total: 0, nomeAula: item.nome });
+    baixarPublicavel(item.id, {
+      inicio: d => setToast(t => ({ ...(t || {}), estado: "progresso", total: d.total })),
+      pagina: d => setToast(t => ({ ...(t || {}), estado: "progresso", pagina: d.pagina, total: d.total, nomePagina: d.nome })),
+      fim: () => setToast({ estado: "ok", nomeAula: item.nome, msg: "Download publicável pronto." }),
+      erro: d => setToast({ estado: "erro", nomeAula: item.nome, msg: d.motivo || "Falha no download publicável." })
+    });
   }
 
   async function remover(item) {
@@ -561,12 +585,45 @@ export default function Acervo() {
   // Fecha qualquer popover ao trocar de pagina (o item pode nem estar mais na tela).
   useEffect(() => { setExpandido(null); }, [paginaAtual]);
 
+  // Toast some sozinho em 10s nos estados terminais (ok/erro); durante o progresso
+  // fica fixo (vai sendo atualizado). O botao de fechar zera a qualquer momento.
+  useEffect(() => {
+    if (!toast || toast.estado === "progresso") return;
+    const t = setTimeout(() => setToast(null), 10000);
+    return () => clearTimeout(t);
+  }, [toast]);
+
   if (erro) return <div className="aviso erro">{erro}</div>;
   if (!itens) return <div className="carregando">Carregando acervo...</div>;
 
   return (
     <>
       {aviso && <div className="aviso info">{aviso}</div>}
+
+      {toast && (
+        <div className={`toast toast-${toast.estado}`} role="status" aria-live="polite">
+          <button className="toast-fechar" title="Fechar" onClick={() => setToast(null)}>×</button>
+          {toast.estado === "progresso" ? (
+            <>
+              <div className="toast-titulo">Preparando “{toast.nomeAula}”…</div>
+              <div className="toast-msg">
+                {toast.total ? `Página ${toast.pagina} de ${toast.total} preparadas.` : "Resolvendo versões…"}
+              </div>
+              <div className="toast-barra">
+                <div
+                  className="toast-barra-fill"
+                  style={{ width: `${toast.total ? Math.round((toast.pagina / toast.total) * 100) : 6}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="toast-titulo">{toast.estado === "ok" ? "✓ " : "⚠ "}{toast.nomeAula}</div>
+              <div className="toast-msg">{toast.msg}</div>
+            </>
+          )}
+        </div>
+      )}
 
       {itens.length === 0 ? (
         <div className="vazio">Nenhum conteúdo baixado ainda.</div>
