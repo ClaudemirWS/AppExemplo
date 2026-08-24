@@ -1,79 +1,57 @@
-// Disciplinas (componentes curriculares) que o downloader pode filtrar.
+// Componentes curriculares (disciplinas) do downloader.
 //
-// Historia: o downloader nasceu TRAVADO em Matematica. Ao liberar Lingua Portuguesa
-// (13/08/2026) este modulo virou uma pequena TABELA de disciplinas, mas o nome do
-// arquivo continua `disciplinaMatematica.js` porque so o index.js o importa e nao
-// vale renomear (SPEC/memoria referenciam este caminho).
+// Historia: o downloader nasceu TRAVADO em Matematica; virou uma tabela fixa (Mat +
+// Portugues) e depois uma tabela de 34. O nome do arquivo continua `disciplinaMatematica.js`
+// porque SPEC/memoria referenciam este caminho e nao vale renomear.
 //
-// Cada disciplina tem um `id` numerico do AVA (o que vai no campo `discipline` do
-// listLibraryFilter) e o rotulo mostrado no seletor "Componente".
+// MODELO DINAMICO (24/08/2026): a lista de componentes NAO e mais uma tabela fixa — e
+// DERIVADA em runtime do mesmo endpoint que o AVA usa (content/los/filterStructureObjective),
+// escopado pela conta logada (grupo). Assim o downloader mostra EXATAMENTE os componentes
+// que a conta tem direito, batendo 1:1 com o "AVA original". Verificado no backend Laravel:
+//   - LosController@filterStructureObjective monta data -> series -> disciplines;
+//   - Los::filterStructureObjective aplica hide_flash (converted IN SIM/VALBERTO) e as
+//     permissoes de segmento (EI/EF1/EF2/EM/EJA) a partir do grupo do usuario;
+//   - o front do AVA (ContentMedia.jsx) monta o seletor "Componente" percorrendo
+//     serie.disciplines dessa mesma estrutura, sem filtro extra.
+// Como o downloader usa a MESMA conta do AVA, derivar daqui reproduz o recorte do AVA.
 //
-// EDUCACAO INFANTIL: o AVA nao usa a disciplina do Fundamental no Infantil — ali o
-// componente e um "campo de experiencia" BNCC com id proprio. Para Matematica esse
-// campo e o ETQRT (id 27). Por isso a disciplina carrega `idInfantil` (quando
-// conhecido) e a taxonomia casa por `reconhece()` (nome), capturando o id real que o
-// AVA devolver na serie. Portugues ainda NAO tem o id do Infantil mapeado, entao so
-// vale no Fundamental (idInfantil ausente -> series de Infantil ficam de fora).
+// MODELO FLAT: cada componente e o proprio id do AVA. No Infantil o AVA usa um "campo de
+// experiencia" BNCC com id proprio (ex.: 27 = ETQRT = a Matematica do Infantil) — e ele
+// aparece como um componente separado no seletor, exatamente como no AVA. Nao ha
+// unificacao por tabela; o casamento e sempre por id.
+//
+// Este modulo guarda apenas ids default e helpers PUROS (sem estado); a lista viva vem
+// do servidor via `disciplinasDaEstrutura`.
 
 export const DISCIPLINA_MATEMATICA = 1;
 export const DISCIPLINA_PORTUGUES = 5;
 
-// Tabela das disciplinas EXPOSTAS no seletor. Acrescentar outra (Arte, Ciencias...)
-// e so somar uma linha aqui — e, se for cobrir o Infantil dela, preencher idInfantil
-// e ajustar `reconhece`.
-export const DISCIPLINAS = [
-  {
-    id: DISCIPLINA_MATEMATICA,
-    rotulo: "Matematica",
-    idInfantil: 27, // ETQRT: "Espacos, tempos, quantidades, relacoes e transformacoes"
-    reconhece: nome =>
-      /matem[aá]tica/i.test(nome) || /espa[çc]os,?\s*tempos,?\s*quantidades/i.test(nome)
-  },
-  {
-    id: DISCIPLINA_PORTUGUES,
-    rotulo: "Lingua Portuguesa",
-    idInfantil: null, // Infantil de Portugues nao mapeado ainda — so Fundamental.
-    reconhece: nome => /portugu[eê]s/i.test(nome) || /l[ií]ngua\s+portuguesa/i.test(nome)
+// Extrai os componentes distintos de uma resposta do filterStructureObjective
+// (data -> series -> disciplines). Devolve [{ id, rotulo }] ordenado por nome.
+// Espelha o que o ContentMedia.jsx do AVA faz para montar o seletor "Componente".
+export function disciplinasDaEstrutura(estrutura) {
+  const vistos = new Map(); // id -> nome
+  for (const seg of estrutura?.data || []) {
+    for (const s of seg?.series || []) {
+      for (const d of s?.disciplines || []) {
+        if (d?.id == null) continue;
+        const id = Number(d.id);
+        if (!vistos.has(id)) vistos.set(id, d.name || "");
+      }
+    }
   }
-];
-
-// Lista simples {id, rotulo} para o front montar o seletor.
-export function listarDisciplinas() {
-  return DISCIPLINAS.map(d => ({ id: d.id, rotulo: d.rotulo }));
-}
-
-// Disciplina da tabela por id (default Matematica — o comportamento historico
-// quando nada e informado).
-export function disciplinaPorId(id) {
-  return DISCIPLINAS.find(d => d.id === Number(id)) || DISCIPLINAS[0];
-}
-
-// Reconhece o componente de uma disciplina do AVA (objeto {id, name}) como
-// pertencente a `disciplinaAlvo`. Casa por id (Fundamental), por id do Infantil
-// (quando houver) ou por nome (cobre o campo de experiencia BNCC do Infantil).
-export function ehComponenteDaDisciplina(disciplina, disciplinaAlvo) {
-  const idAva = Number(disciplina?.id);
-  const nome = String(disciplina?.name || "");
-  return (
-    idAva === disciplinaAlvo.id ||
-    (disciplinaAlvo.idInfantil != null && idAva === disciplinaAlvo.idInfantil) ||
-    disciplinaAlvo.reconhece(nome)
-  );
-}
-
-// Compat: o "componente de Matematica" de antes, agora um caso de `ehComponenteDaDisciplina`.
-export function ehComponenteMatematica(disciplina) {
-  return ehComponenteDaDisciplina(disciplina, disciplinaPorId(DISCIPLINA_MATEMATICA));
+  return [...vistos.entries()]
+    .map(([id, rotulo]) => ({ id, rotulo }))
+    .sort((a, b) => String(a.rotulo).localeCompare(String(b.rotulo), "pt-BR"));
 }
 
 export function segmentoEhInfantil(nomeSegmento) {
   return /infantil/i.test(String(nomeSegmento || ""));
 }
 
-// Resolve o `discipline` a enviar ao listLibraryFilter. `disciplinaId` e a disciplina
-// escolhida no seletor (default Matematica). `disciplinaSerieId` e o id que a
-// taxonomia capturou para a serie especifica (no Fundamental = o proprio id; no
-// Infantil de Matematica = 27). Os 4 casos reais do AVA:
+// Resolve o `discipline` a enviar ao listLibraryFilter. No modelo flat/dinamico cada
+// componente e o proprio id do AVA (Fundamental = id; Infantil = o campo BNCC, ex. 27),
+// entao NAO ha mais mapeamento por tabela. Os casos reais do AVA:
 export function resolverDiscipline({
   temSegmento,
   ehInfantil,
@@ -81,18 +59,12 @@ export function resolverDiscipline({
   disciplinaSerieId,
   disciplinaId = DISCIPLINA_MATEMATICA
 }) {
-  const disc = disciplinaPorId(disciplinaId);
-
-  if (temSerie) {
-    // Serie especifica: o id que a taxonomia capturou para ela (Fundamental = id da
-    // disciplina; Infantil de Matematica = 27). Fallback = id da disciplina.
-    return disciplinaSerieId || disc.id;
-  }
-  if (ehInfantil && temSegmento) {
-    // Infantil fixo + todas as series: unico caso `null` do AVA (o backend resolve o
-    // campo de experiencia). Igual para qualquer disciplina.
-    return null;
-  }
-  // Fundamental+Todas e Todos/Todos: a disciplina escolhida, travada.
-  return disc.id;
+  // Serie especifica: o id que a taxonomia capturou para ela (= o proprio componente
+  // naquela serie). Fallback = a disciplina escolhida.
+  if (temSerie) return disciplinaSerieId || disciplinaId;
+  // Infantil fixo + todas as series: unico caso `null` do AVA (o backend resolve o campo
+  // de experiencia). Igual para qualquer disciplina.
+  if (ehInfantil && temSegmento) return null;
+  // Fundamental+Todas e Todos/Todos: a disciplina escolhida.
+  return disciplinaId;
 }

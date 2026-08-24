@@ -21,11 +21,9 @@ import { verificarLista } from "./verificadorVersao.js";
 import { r2Configurado, subirObjeto, apagarObjeto, lerObjeto } from "./r2Cliente.js";
 import { ehAdminEducandus } from "./autorizacao.js";
 import {
-  ehComponenteDaDisciplina,
   resolverDiscipline,
   segmentoEhInfantil,
-  listarDisciplinas,
-  disciplinaPorId,
+  disciplinasDaEstrutura,
   DISCIPLINA_MATEMATICA
 } from "./disciplinaMatematica.js";
 
@@ -238,9 +236,35 @@ app.post("/api/logout", (req, res) => {
   res.json({ ok: true });
 });
 
-// --- Disciplinas expostas no seletor "Componente" ---
-app.get("/api/disciplinas", (_req, res) => {
-  res.json({ disciplinas: listarDisciplinas() });
+// Componentes que a CONTA logada tem direito, derivados do filterStructureObjective
+// (a mesma fonte do seletor do AVA), unindo Aula(1) e Jogo(2). Como o downloader usa a
+// mesma conta do AVA, isto reproduz o recorte por grupo (Flash + segmentos) do AVA.
+async function disciplinasDisponiveis(token) {
+  const vistos = new Map(); // id -> rotulo
+  for (const tipo of [1, 2]) {
+    let estrutura = null;
+    try {
+      estrutura = await estruturaFiltro(token, tipo);
+    } catch {
+      estrutura = null; // um tipo indisponivel nao derruba o outro
+    }
+    for (const d of disciplinasDaEstrutura(estrutura)) {
+      if (!vistos.has(d.id)) vistos.set(d.id, d.rotulo);
+    }
+  }
+  return [...vistos.entries()]
+    .map(([id, rotulo]) => ({ id, rotulo }))
+    .sort((a, b) => String(a.rotulo).localeCompare(String(b.rotulo), "pt-BR"));
+}
+
+// --- Disciplinas expostas no seletor "Componente" (dinamicas, escopadas pela conta) ---
+app.get("/api/disciplinas", async (req, res) => {
+  if (!exigirSessao(req, res)) return;
+  try {
+    res.json({ disciplinas: await disciplinasDisponiveis(req.sessao.token) });
+  } catch (erro) {
+    res.status(502).json({ erro: erro.message });
+  }
 });
 
 // --- Taxonomia (povoa os selects de segmento/serie) ---
@@ -252,26 +276,24 @@ app.get("/api/disciplinas", (_req, res) => {
 app.get("/api/taxonomia", async (req, res) => {
   if (!exigirSessao(req, res)) return;
   try {
-    const disciplinaAlvo = disciplinaPorId(req.query.disciplina || DISCIPLINA_MATEMATICA);
+    const alvoId = Number(req.query.disciplina || DISCIPLINA_MATEMATICA);
     const resposta = await estruturaFiltro(req.sessao.token, 1); // tipo 1 = Aula
     const segmentos = [];
     for (const seg of resposta?.data || []) {
       const infantil = segmentoEhInfantil(seg?.name);
       const series = [];
       for (const s of seg?.series || []) {
-        const disc = (s?.disciplines || []).find(d => ehComponenteDaDisciplina(d, disciplinaAlvo));
+        // Casamento por id (modelo flat): a serie so entra se ofertar exatamente o
+        // componente escolhido. No Infantil o campo BNCC ja e o proprio componente.
+        const disc = (s?.disciplines || []).find(d => Number(d?.id) === alvoId);
         if (!disc || s?.id == null) continue;
-        series.push({
-          id: s.id,
-          nome: s.name,
-          disciplinaSerieId: disc.id != null ? Number(disc.id) : disciplinaAlvo.id
-        });
+        series.push({ id: s.id, nome: s.name, disciplinaSerieId: alvoId });
       }
       if (series.length) {
         segmentos.push({ id: seg.id, nome: seg.name, infantil, series });
       }
     }
-    res.json({ disciplina: disciplinaAlvo.id, segmentos });
+    res.json({ disciplina: alvoId, segmentos });
   } catch (erro) {
     res.status(502).json({ erro: erro.message });
   }
@@ -290,7 +312,9 @@ app.get("/api/catalogo", async (req, res) => {
     // O AVA exige type e discipline especificos por scan, entao varremos cada combinacao
     // e mesclamos por id (mesma tatica do reindex). Com filtros unicos, e um scan so.
     const tipos = tipo ? [Number(tipo)] : [1, 2];
-    const disciplinas = disciplina ? [Number(disciplina)] : listarDisciplinas().map(d => d.id);
+    const disciplinas = disciplina
+      ? [Number(disciplina)]
+      : (await disciplinasDisponiveis(req.sessao.token)).map(d => d.id);
 
     const porId = new Map();
     let paginasLidas = 0;
@@ -738,17 +762,17 @@ app.post("/api/acervo/reindexar", async (req, res) => {
     }
 
     // 2. Varrer o catalogo inteiro por segmento E por disciplina, acumulando a
-    //    classificacao real de cada id. tipo 1 = Aula, 2 = Jogo. Varre TODAS as
-    //    disciplinas expostas (Matematica, Portugues, ...) porque o acervo pode ter
-    //    conteudo de qualquer uma — reindexar so Matematica deixaria os demais sem
-    //    reclassificacao ("nao encontrado" a toa).
+    //    classificacao real de cada id. tipo 1 = Aula, 2 = Jogo. Varre TODOS os
+    //    componentes que a conta tem direito (derivados do filterStructureObjective)
+    //    porque o acervo pode ter conteudo de qualquer um — reindexar so um deles
+    //    deixaria os demais sem reclassificacao ("nao encontrado" a toa).
     const taxonomia = await estruturaFiltro(req.sessao.token, 1);
     const segmentos = (taxonomia?.data || []).map(s => ({
       id: s.id,
       infantil: segmentoEhInfantil(s?.name)
     }));
     const catalogoPorId = new Map();
-    for (const disc of listarDisciplinas()) {
+    for (const disc of await disciplinasDisponiveis(req.sessao.token)) {
       for (const tipo of [1, 2]) {
         for (const seg of segmentos) {
           const discipline = resolverDiscipline({

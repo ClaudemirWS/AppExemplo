@@ -1,13 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, baixarEmMassa } from "./api.js";
 
-// Filtro inicial padrao do Catalogo (por NOME — os ids da taxonomia nao sao fixos).
-// disciplina/tipo ja tem default numerico; segmento e serie sao resolvidos assim que
-// a taxonomia chega. Ao casar os dois, a tela ja lista sozinha.
-const SEGMENTO_PADRAO = "Ensino Fundamental Anos Iniciais";
-const SERIE_PADRAO = "3º Ano EF";
-
-const OPCAO_TODOS = { id: "", nome: "Todos" };
+// O Catalogo abre SEM pre-selecao: Tipo/Segmento/Serie/Componente em "Todos" e nada
+// listado ate o usuario clicar em "Listar".
 
 // Rotulo AMIGAVEL do formato (so exibicao — nao altera a deteccao nem os dados).
 const ROTULO_FORMATO = {
@@ -109,8 +104,8 @@ function compararSerie(a, b) {
 export default function Catalogo() {
   const [segmentos, setSegmentos] = useState([]);
   const [disciplinasDisp, setDisciplinasDisp] = useState([]); // {id,rotulo} do servidor
-  const [disciplina, setDisciplina] = useState("1"); // "1"=Matematica, "5"=Portugues
-  const [tipo, setTipo] = useState("1"); // 1 = Aula, 2 = Jogo
+  const [disciplina, setDisciplina] = useState(""); // "" = Todos (sem pre-selecao)
+  const [tipo, setTipo] = useState(""); // "" = Todos (sem pre-selecao); 1 = Aula, 2 = Jogo
   const [segmento, setSegmento] = useState("");
   const [serie, setSerie] = useState("");
   const [busca, setBusca] = useState("");
@@ -133,10 +128,6 @@ export default function Catalogo() {
   const [indisponiveis, setIndisponiveis] = useState(() => new Map());
   const [progressoFila, setProgressoFila] = useState(null); // {atual,total,concluidos}
   const [pagina, setPagina] = useState(1);
-  // Etapa da pre-selecao padrao (uma vez, na abertura): "seg" -> resolver segmento,
-  // "serie" -> resolver serie e listar, "pronto" -> nao interfere mais.
-  const preSelecao = useRef("seg");
-
   function carregarBaixados() {
     api.acervo()
       .then(r => setBaixados(new Map((r.itens || []).map(i => [String(i.id), i]))))
@@ -174,26 +165,8 @@ export default function Catalogo() {
     [segAtual]
   );
 
-  // Pre-selecao padrao (so na abertura): assim que a taxonomia da disciplina padrao
-  // chega, seleciona o segmento por nome; quando as series desse segmento chegam,
-  // seleciona a serie por nome e lista. Se algum nome nao existir, para sem forcar.
-  useEffect(() => {
-    if (preSelecao.current !== "seg" || !segmentos.length) return;
-    const seg = segmentos.find(s => s.nome === SEGMENTO_PADRAO);
-    if (!seg) { preSelecao.current = "pronto"; return; }
-    preSelecao.current = "serie";
-    setSegmento(String(seg.id));
-    setSerie("");
-  }, [segmentos]);
-
-  useEffect(() => {
-    if (preSelecao.current !== "serie" || !seriesDoSegmento.length) return;
-    const s = seriesDoSegmento.find(x => x.nome === SERIE_PADRAO);
-    preSelecao.current = "pronto";
-    if (!s) return;
-    setSerie(String(s.id));
-    varrer(String(s.id)); // lista ja com a serie padrao (o estado `serie` ainda nao propagou)
-  }, [seriesDoSegmento]);
+  // Sem pre-selecao: o catalogo abre com Tipo/Segmento/Serie/Componente em "Todos" e
+  // sem listar nada. O usuario escolhe os filtros (ou nenhum) e clica em "Listar".
 
   async function varrer(serieForcada) {
     setCarregando(true);
