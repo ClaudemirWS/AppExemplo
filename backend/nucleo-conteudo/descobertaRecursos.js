@@ -167,10 +167,18 @@ async function adicionarManifestosConstruct(fila, diretorioBase, externalId = ""
   // e ignorado — e evita que uma classificacao errada deixe o pacote sem o arquivo
   // mais importante do export. Foi exatamente essa a falha: um C2 classificado
   // como C3 baixava sem `data.js` e abria em branco.
+  //
+  // `offline.js`/`offline.json` sao o MANIFESTO do Construct (o `fileList` que o SW
+  // cacheia) — a lista AUTORITATIVA de todos os assets, inclusive os que o jogo
+  // carrega em RUNTIME e ficam na RAIZ (ex.: `imagem0_0.png` das formas), que nao
+  // aparecem no HTML nem no `data.js` e nao sao pegos pela listagem da raiz (a raiz
+  // serve o index). Sem `offline.js` aqui, essas imagens faltavam e o Construct as
+  // pintava de MAGENTA (textura ausente). O `offline.js` tem conteudo JSON.
   const candidatos = [
     "data.js",
     "data.json",
     "appmanifest.json",
+    "offline.js",
     "offline.json",
     "offlineClient.js",
     "sw.js",
@@ -190,7 +198,9 @@ async function adicionarManifestosConstruct(fila, diretorioBase, externalId = ""
         formato
       });
 
-      const recursos = nome.endsWith(".json") ? extrairRecursosJson(arquivo.texto) : extrairRecursosHtml(arquivo.texto);
+      // offline.js tem conteudo JSON (fileList), apesar da extensao .js.
+      const ehManifestoJson = nome.endsWith(".json") || nome === "offline.js";
+      const recursos = ehManifestoJson ? extrairRecursosJson(arquivo.texto) : extrairRecursosHtml(arquivo.texto);
 
       for (const recurso of recursos) {
         adicionarRecursoNaFila(fila, recurso, url, diretorioBase, {
