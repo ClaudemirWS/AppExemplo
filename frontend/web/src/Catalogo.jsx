@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api, baixarEmMassa } from "./api.js";
+import BarraAcao from "./BarraAcao.jsx";
 
 // O Catalogo abre SEM pre-selecao: Tipo/Segmento/Serie/Componente em "Todos" e nada
 // listado ate o usuario clicar em "Listar".
@@ -224,22 +225,31 @@ export default function Catalogo() {
   const inicio = (paginaAtual - 1) * POR_PAGINA;
   const paginados = filtrados.slice(inicio, inicio + POR_PAGINA);
 
-  // "Marcar todos" age sobre a PAGINA VISIVEL (os baixaveis dos 10 exibidos), igual ao
-  // Acervo. A selecao PERSISTE ao trocar de pagina — dá para marcar varias paginas e
-  // baixar tudo junto (o download usa `marcados`, que guarda ids de qualquer pagina).
+  // A selecao em massa cobre TODO o resultado filtrado, nao apenas os 10 itens da
+  // pagina visual. A selecao individual continua persistindo ao trocar de pagina.
+  const todosMarcados = baixaveis.length > 0 && baixaveis.every(i => marcados.has(i.id));
   const baixaveisDaPagina = paginados.filter(baixavel);
-  const todosMarcados = baixaveisDaPagina.length > 0 && baixaveisDaPagina.every(i => marcados.has(i.id));
+  const todosDaPaginaMarcados = baixaveisDaPagina.length > 0 && baixaveisDaPagina.every(i => marcados.has(i.id));
 
   // Nova varredura (itens trocam) ou nova busca voltam para a pagina 1.
   useEffect(() => { setPagina(1); }, [itens, busca]);
 
-  function alternarTodos() {
-    const ids = baixaveisDaPagina.map(i => i.id);
+  function selecionarTodas() {
     setMarcados(prev => {
       const p = new Set(prev);
-      if (todosMarcados) ids.forEach(id => p.delete(id));
-      else ids.forEach(id => p.add(id));
+      baixaveis.forEach(item => p.add(item.id));
       return p;
+    });
+  }
+  function desmarcarTodas() {
+    setMarcados(new Set());
+  }
+  function alternarPagina() {
+    setMarcados(prev => {
+      const proximo = new Set(prev);
+      if (todosDaPaginaMarcados) baixaveisDaPagina.forEach(item => proximo.delete(item.id));
+      else baixaveisDaPagina.forEach(item => proximo.add(item.id));
+      return proximo;
     });
   }
   function alternar(id) {
@@ -367,26 +377,21 @@ export default function Catalogo() {
       )}
 
       {itens && (
-        <div className="barra-acao">
-          <span className="contagem">
-            {filtrados.length} conteúdos{busca.trim() ? ` (de ${itens.length})` : ""} · {baixaveis.length} baixáveis · {marcados.size} marcados
+        <BarraAcao
+          busca={busca}
+          onBusca={setBusca}
+          contagem={
+            <>
+            {filtrados.length} conteúdos{busca.trim() ? ` (de ${itens.length})` : ""} · {baixaveis.length} baixáveis · {marcados.size} selecionada(s)
             {totalPaginas > 1 ? ` · pag. ${paginaAtual}/${totalPaginas}` : ""}
-          </span>
-          <div className="busca-wrap barra-busca">
-            <input
-              value={busca}
-              onChange={e => setBusca(e.target.value)}
-              placeholder="id ou nome do conteúdo"
-            />
-            {busca && (
-              <button type="button" className="busca-limpar" title="Limpar busca" onClick={() => setBusca("")}>
-                ×
-              </button>
-            )}
-          </div>
-          <div className="espaco" />
-          <button onClick={alternarTodos} disabled={!baixaveisDaPagina.length}>
-            {todosMarcados ? "Desmarcar página" : "Marcar página"}
+            </>
+          }
+        >
+          <button
+            onClick={todosMarcados ? desmarcarTodas : selecionarTodas}
+            disabled={!baixaveis.length || baixando}
+          >
+            {todosMarcados ? "Desmarcar todas" : "Selecionar todas"}
           </button>
           <button
             className={temBaixadoMarcado ? "" : "primario"}
@@ -405,7 +410,7 @@ export default function Catalogo() {
               {parando ? "Parando..." : "Parar"}
             </button>
           )}
-        </div>
+        </BarraAcao>
       )}
 
       {carregando && <div className="carregando">Varrendo o catálogo (todas as páginas)...</div>}
@@ -423,7 +428,14 @@ export default function Catalogo() {
               <thead>
                 <tr>
                   <th className="check">
-                    <input type="checkbox" checked={todosMarcados} onChange={alternarTodos} />
+                    <input
+                      type="checkbox"
+                      checked={todosDaPaginaMarcados}
+                      disabled={baixando || !baixaveisDaPagina.length}
+                      onChange={alternarPagina}
+                      title="Selecionar ou desmarcar os conteúdos desta página"
+                      aria-label="Selecionar ou desmarcar os conteúdos desta página"
+                    />
                   </th>
                   <th className="col-esq">ID</th>
                   <th className="col-esq">Nome</th>

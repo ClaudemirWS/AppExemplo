@@ -46,12 +46,21 @@ export class PaginaSemVersaoError extends Error {
 
 // Fetch de BYTES CRUS (sem a normalizacao de charset do httpConteudo). Timeout + 2
 // retentativas em 5xx/408 (rede transitoria). Devolve { bytes: Uint8Array, tipo }.
-async function baixarBytes(url, tentativas = 3) {
+function verificarAbortado(signal) {
+  if (signal?.aborted) {
+    throw new DOMException("Download cancelado.", "AbortError");
+  }
+}
+
+async function baixarBytes(url, tentativas = 3, signal) {
   let ultimoErro = null;
 
   for (let tentativa = 1; tentativa <= tentativas; tentativa += 1) {
+    verificarAbortado(signal);
     try {
-      const resposta = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
+      const timeout = AbortSignal.timeout(TIMEOUT_MS);
+      const sinal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      const resposta = await fetch(url, { signal: sinal });
       if (!resposta.ok) {
         const erro = new Error(`HTTP ${resposta.status} ao baixar ${url}`);
         erro.status = resposta.status;
@@ -62,6 +71,7 @@ async function baixarBytes(url, tentativas = 3) {
         tipo: resposta.headers.get("content-type") || ""
       };
     } catch (erro) {
+      verificarAbortado(signal);
       ultimoErro = erro;
       const status = Number(erro?.status) || (erro?.name === "TimeoutError" ? 408 : 0);
       const repetivel = status === 408 || status === 429 || status >= 500;
@@ -75,12 +85,13 @@ async function baixarBytes(url, tentativas = 3) {
 // Espelha UMA pagina do publicador verbatim. `urlBaseDir` = a pasta do vN
 // (`.../versoes/<id>_vN/`). Devolve { arquivos: Map<caminhoRelativo, Uint8Array> } com o
 // index.html e todos os recursos MESMO-ORIGEM sob a pasta. Refs de CDN ficam no texto.
-export async function espelharPaginaVerbatim({ urlBaseDir, externalId }) {
+export async function espelharPaginaVerbatim({ urlBaseDir, externalId, signal }) {
+  verificarAbortado(signal);
   const urlIndex = resolverUrl(urlBaseDir, "index.html");
   const diretorioBase = obterDiretorioUrl(urlIndex);
   const origem = diretorioBase.origin;
 
-  const indexBaixado = await baixarBytes(urlIndex);
+  const indexBaixado = await baixarBytes(urlIndex, 3, signal);
   const html = new TextDecoder("utf-8", { fatal: false }).decode(indexBaixado.bytes);
 
   const arquivos = new Map();
@@ -108,6 +119,7 @@ export async function espelharPaginaVerbatim({ urlBaseDir, externalId }) {
   let bytesTotais = indexBaixado.bytes.length;
 
   async function processarProximo() {
+    verificarAbortado(signal);
     const item = fila.shift();
     if (!item) return false;
 
@@ -132,7 +144,7 @@ export async function espelharPaginaVerbatim({ urlBaseDir, externalId }) {
     vistosCaminho.add(caminho);
 
     try {
-      const baixado = await baixarBytes(url);
+      const baixado = await baixarBytes(url, 3, signal);
       bytesTotais += baixado.bytes.length;
       if (bytesTotais > LIMITE_BYTES) return false;
       arquivos.set(caminho, baixado.bytes);
@@ -176,7 +188,8 @@ export async function espelharPaginaVerbatim({ urlBaseDir, externalId }) {
 // Monta o zip publicavel da aula INTEIRA. `detalhes` vem de normalizarDetalhesConteudo
 // (paginas com externalId/ordem/nome). `onPagina(indice1, total, nome)` reporta o
 // progresso por pagina. Devolve { nome, bytesZip } (o nome ja e "Titulo [externalId].zip").
-export async function montarZipPublicavel({ detalhes, onPagina = () => {} }) {
+export async function montarZipPublicavel({ detalhes, onPagina = () => {}, signal }) {
+  verificarAbortado(signal);
   const paginas = (detalhes?.paginas || []).filter(p => p.externalId);
   if (!paginas.length) {
     throw new Error("Aula sem páginas versionáveis (sem external_id) — nada a publicar.");
@@ -186,7 +199,9 @@ export async function montarZipPublicavel({ detalhes, onPagina = () => {} }) {
   //    faltar em qualquer uma, aborta (sem zip parcial).
   const versoes = [];
   for (const pagina of paginas) {
+    verificarAbortado(signal);
     const versao = await obterUltimaVersaoLo(pagina.externalId);
+    verificarAbortado(signal);
     if (!versao?.url) {
       throw new PaginaSemVersaoError(pagina);
     }
@@ -200,10 +215,12 @@ export async function montarZipPublicavel({ detalhes, onPagina = () => {} }) {
   const total = versoes.length;
 
   for (let i = 0; i < versoes.length; i += 1) {
+    verificarAbortado(signal);
     const { pagina, versao } = versoes[i];
     const { arquivos } = await espelharPaginaVerbatim({
       urlBaseDir: versao.url,
-      externalId: String(pagina.externalId)
+      externalId: String(pagina.externalId),
+      signal
     });
     for (const [caminho, bytes] of arquivos) {
       entradas[`${raiz}/${pagina.externalId}/${caminho}`] = bytes;
@@ -212,6 +229,7 @@ export async function montarZipPublicavel({ detalhes, onPagina = () => {} }) {
     onPagina(i + 1, total, pagina.nome);
   }
 
+  verificarAbortado(signal);
   const bytesZip = zipSync(entradas, { level: 6 });
   return { nome: `${raiz}.zip`, bytesZip };
 }

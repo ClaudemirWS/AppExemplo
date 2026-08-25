@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, baixarEmMassa, baixarEstruturaLOs, baixarPublicavel } from "./api.js";
+import BarraAcao from "./BarraAcao.jsx";
 
 // Icones dos botoes de acao. SVG inline (nao emoji): herdam a cor branca via
 // `currentColor`, escalam nitido e nao dependem da fonte de emoji do SO — o 🗑
@@ -274,6 +275,7 @@ export default function Acervo() {
   const [itens, setItens] = useState(null);
   const [erro, setErro] = useState("");
   const [removendo, setRemovendo] = useState(null);
+  const [confirmacaoRemocao, setConfirmacaoRemocao] = useState(null);
   const [reindexando, setReindexando] = useState(false);
   const [verificando, setVerificando] = useState(false);
   // Mapa id -> { situacao, verificadoEm, paginasDesatualizadas } da ULTIMA verificacao.
@@ -288,9 +290,16 @@ export default function Acervo() {
   const [cancelarAtualizacao, setCancelarAtualizacao] = useState(null);
   const [parandoAtualizacao, setParandoAtualizacao] = useState(false);
   const [aviso, setAviso] = useState("");
-  // Toast do download publicavel (canto): { estado:"progresso"|"ok"|"erro", pagina,
-  // total, nomePagina, nomeAula, msg }. Some sozinho em 10s nos estados terminais.
+  // Toast de qualquer ZIP (canto): { estado:"progresso"|"ok"|"erro"|"cancelado",
+  // pagina, total, nomePagina, nomeAula, msg }. Some em 10s nos estados terminais.
   const [toast, setToast] = useState(null);
+  const [toastVerificacao, setToastVerificacao] = useState(null);
+  const [toastAtualizacao, setToastAtualizacao] = useState(null);
+  // Apenas um ZIP pode ser preparado/entregue por vez. O ref fecha a pequena janela
+  // entre o clique e o proximo render; o state atualiza a UI e identifica a linha.
+  const downloadEstruturaRef = useRef(false);
+  const cancelarEstruturaRef = useRef(null);
+  const [downloadEstruturaId, setDownloadEstruturaId] = useState(null);
   const [fTipo, setFTipo] = useState(""); // "" = todos, "1" = Aula, "2" = Jogo
   const [fComponente, setFComponente] = useState(""); // "" = todos; nome da disciplina
   const [fSegmento, setFSegmento] = useState("");
@@ -313,6 +322,17 @@ export default function Acervo() {
       document.removeEventListener("keydown", aoTeclar);
     };
   }, [expandido]);
+
+  // Escape fecha apenas uma confirmacao ainda nao iniciada. Durante a exclusao o
+  // modal permanece bloqueado para nao sugerir que a operacao foi cancelada.
+  useEffect(() => {
+    if (!confirmacaoRemocao || removendo !== null) return undefined;
+    const aoTeclar = e => {
+      if (e.key === "Escape") setConfirmacaoRemocao(null);
+    };
+    document.addEventListener("keydown", aoTeclar);
+    return () => document.removeEventListener("keydown", aoTeclar);
+  }, [confirmacaoRemocao, removendo]);
 
   function carregar() {
     setErro("");
@@ -337,37 +357,98 @@ export default function Acervo() {
   // Baixa a estrutura de LOs (zip). Duas vias:
   //   - Animate -> download PUBLICAVEL (mirror verbatim on-demand do publicador), com
   //     progresso no toast; o zip sai pronto para instrumentar e republicar.
-  //   - demais  -> comportamento atual (zip do R2, reescrito para o PWA).
+  //   - demais  -> zip do R2, reescrito para o PWA. Apesar de nao termos progresso
+  //     granular nessa via, o mesmo toast aparece imediatamente e fica indeterminado.
   async function baixarEstrutura(item) {
+    if (downloadEstruturaRef.current) return;
+
+    downloadEstruturaRef.current = true;
+    setDownloadEstruturaId(String(item.id));
     setErro("");
+    setToast({
+      estado: "progresso",
+      pagina: 0,
+      total: 0,
+      indeterminado: !ehAnimate(item),
+      nomeAula: item.nome,
+      msg: !ehAnimate(item) ? "Preparando o arquivo para download…" : "Resolvendo versões…"
+    });
+
+    const liberarDownload = () => {
+      downloadEstruturaRef.current = false;
+      cancelarEstruturaRef.current = null;
+      setDownloadEstruturaId(null);
+    };
 
     if (!ehAnimate(item)) {
+      const controlador = new AbortController();
+      cancelarEstruturaRef.current = () => controlador.abort();
       try {
-        await baixarEstruturaLOs(item.id);
+        await baixarEstruturaLOs(item.id, { signal: controlador.signal });
+        setToast({ estado: "ok", nomeAula: item.nome, msg: "Download pronto." });
       } catch (err) {
-        setErro(`Falha ao baixar "${item.nome}": ${err.message}`);
+        if (err.name !== "AbortError") {
+          setToast({
+            estado: "erro",
+            nomeAula: item.nome,
+            msg: err.message || "Falha ao preparar o download."
+          });
+        }
+      } finally {
+        liberarDownload();
       }
       return;
     }
 
-    setToast({ estado: "progresso", pagina: 0, total: 0, nomeAula: item.nome });
-    baixarPublicavel(item.id, {
-      inicio: d => setToast(t => ({ ...(t || {}), estado: "progresso", total: d.total })),
-      pagina: d => setToast(t => ({ ...(t || {}), estado: "progresso", pagina: d.pagina, total: d.total, nomePagina: d.nome })),
-      fim: () => setToast({ estado: "ok", nomeAula: item.nome, msg: "Download publicável pronto." }),
-      erro: d => setToast({ estado: "erro", nomeAula: item.nome, msg: d.motivo || "Falha no download publicável." })
-    });
+    try {
+      cancelarEstruturaRef.current = baixarPublicavel(item.id, {
+        inicio: d => setToast(t => ({ ...(t || {}), estado: "progresso", total: d.total, indeterminado: false })),
+        pagina: d => setToast(t => ({ ...(t || {}), estado: "progresso", pagina: d.pagina, total: d.total, nomePagina: d.nome, indeterminado: false })),
+        fim: () => {
+          liberarDownload();
+          setToast({ estado: "ok", nomeAula: item.nome, msg: "Download publicável pronto." });
+        },
+        erro: d => {
+          liberarDownload();
+          setToast({ estado: "erro", nomeAula: item.nome, msg: d.motivo || "Falha no download publicável." });
+        }
+      });
+    } catch (err) {
+      liberarDownload();
+      setToast({
+        estado: "erro",
+        nomeAula: item.nome,
+        msg: err.message || "Falha no download publicável."
+      });
+    }
+  }
+
+  function fecharOuCancelarToast() {
+    if (!downloadEstruturaRef.current) {
+      setToast(null);
+      return;
+    }
+
+    const nomeAula = toast?.nomeAula || "Aula";
+    cancelarEstruturaRef.current?.();
+    downloadEstruturaRef.current = false;
+    cancelarEstruturaRef.current = null;
+    setDownloadEstruturaId(null);
+    setToast({ estado: "cancelado", nomeAula, msg: "Download cancelado." });
   }
 
   async function remover(item) {
-    if (!window.confirm(`Apagar "${item.nome}" do acervo? Os arquivos serão removidos do disco.`)) {
-      return;
-    }
     setRemovendo(item.id);
     setErro("");
     try {
       await api.removerAcervo(item.id);
       setItens(prev => prev.filter(i => i.id !== item.id));
+      setSelecionados(prev => {
+        const proximo = new Set(prev);
+        proximo.delete(String(item.id));
+        return proximo;
+      });
+      setConfirmacaoRemocao(null);
     } catch (err) {
       setErro(err.message);
     } finally {
@@ -404,6 +485,12 @@ export default function Acervo() {
     setVerificando(true);
     setErro("");
     setAviso("");
+    setToastAtualizacao(null);
+    setToastVerificacao({
+      estado: "progresso",
+      titulo: "Verificando atualizações",
+      msg: `Consultando ${ids.length} conteúdo(s) no AVA…`
+    });
     try {
       const r = await api.verificarUpdates(ids);
       const agora = new Date().toISOString();
@@ -418,12 +505,27 @@ export default function Acervo() {
         }
         return mapa;
       });
-      const n = (r.resultados || []).filter(x => x.situacao === "desatualizado").length;
-      setAviso(n
-        ? `${n} aula(s) com versão nova no AVA — marcadas com "atualizar". Rebaixe para atualizar.`
-        : "Nenhuma das aulas verificadas está desatualizada.");
+      const resultados = r.resultados || [];
+      const n = resultados.filter(x => x.situacao === "desatualizado").length;
+      const naoVerificados = resultados.filter(x => x.situacao === "erro" || x.situacao === "nao-versionavel").length;
+      const complemento = naoVerificados
+        ? ` ${naoVerificados} conteúdo(s) não puderam ter a versão comparada.`
+        : "";
+      const mensagem = n
+        ? `${n} conteúdo(s) possuem versão nova e foram marcados para atualizar.${complemento}`
+        : `${r.total || resultados.length} conteúdo(s) verificados. Nenhuma atualização encontrada.${complemento}`;
+      setAviso(mensagem);
+      setToastVerificacao({
+        estado: "ok",
+        titulo: "Verificação concluída",
+        msg: mensagem
+      });
     } catch (err) {
-      setErro(err.message);
+      setToastVerificacao({
+        estado: "erro",
+        titulo: "Não foi possível verificar",
+        msg: err.message || "Falha ao consultar atualizações."
+      });
     } finally {
       setVerificando(false);
     }
@@ -449,9 +551,20 @@ export default function Acervo() {
         habilidade: i.habilidadeCodigo || i.habilidade || "",
         imagem: i.imagem || ""
       }));
+    const totalAtualizacao = itensSelecionados.length;
+    const nomePorId = new Map(itensSelecionados.map(i => [String(i.id), i.nome]));
+    let concluidos = 0;
+    let falhas = 0;
     setAtualizando(true);
     setErro("");
     setAviso("");
+    setToastVerificacao(null);
+    setToastAtualizacao({
+      estado: "progresso",
+      titulo: "Atualizando conteúdos",
+      msg: `Preparando 0 de ${totalAtualizacao}…`,
+      pct: 0
+    });
     setEstadosDownload(prev => {
       const p = { ...prev };
       ids.forEach(id => { p[id] = { status: "fila", pct: 0 }; });
@@ -459,11 +572,37 @@ export default function Acervo() {
     });
 
     const parar = baixarEmMassa(itensSelecionados, {
-      "item-inicio": ({ id }) => setEstadosDownload(p => ({ ...p, [id]: { status: "baixando", pct: 0 } })),
-      progresso: ({ id, pct, retentando }) =>
-        setEstadosDownload(p => ({ ...p, [id]: { status: "baixando", pct, retentando } })),
+      "item-inicio": ({ id, indice }) => {
+        setEstadosDownload(p => ({ ...p, [id]: { status: "baixando", pct: 0 } }));
+        setToastAtualizacao({
+          estado: "progresso",
+          titulo: "Atualizando conteúdos",
+          msg: `${concluidos} de ${totalAtualizacao} processados · ${nomePorId.get(String(id)) || `Conteúdo ${Number(indice) + 1}`}`,
+          pct: totalAtualizacao ? Math.round((concluidos / totalAtualizacao) * 100) : 0
+        });
+      },
+      progresso: ({ id, pct, retentando }) => {
+        setEstadosDownload(p => ({ ...p, [id]: { status: "baixando", pct, retentando } }));
+        const percentualGeral = totalAtualizacao
+          ? Math.round(((concluidos + (Number(pct) || 0) / 100) / totalAtualizacao) * 100)
+          : 0;
+        setToastAtualizacao({
+          estado: "progresso",
+          titulo: "Atualizando conteúdos",
+          msg: `${concluidos} de ${totalAtualizacao} processados · ${nomePorId.get(String(id)) || "Conteúdo atual"}${retentando ? ` · tentativa ${retentando}` : ""}`,
+          pct: percentualGeral
+        });
+      },
       "item-fim": d => {
         setEstadosDownload(p => ({ ...p, [d.id]: d }));
+        concluidos += 1;
+        if (d.status !== "ok") falhas += 1;
+        setToastAtualizacao({
+          estado: "progresso",
+          titulo: "Atualizando conteúdos",
+          msg: `${concluidos} de ${totalAtualizacao} processados${falhas ? ` · ${falhas} com falha` : ""}`,
+          pct: totalAtualizacao ? Math.round((concluidos / totalAtualizacao) * 100) : 100
+        });
         // Baixou com sucesso = versao mais recente = "em dia". Marca na hora (o backend
         // tambem persiste isso; o carregar() do fim so confirma). Se falhou, nao marca.
         if (d.status === "ok") {
@@ -478,8 +617,28 @@ export default function Acervo() {
           });
         }
       },
-      fim: () => { setAtualizando(false); setCancelarAtualizacao(null); carregar(); },
-      erro: ({ motivo }) => { setErro(motivo); setAtualizando(false); setCancelarAtualizacao(null); carregar(); }
+      fim: ({ cancelado } = {}) => {
+        setAtualizando(false);
+        setCancelarAtualizacao(null);
+        setToastAtualizacao(cancelado
+          ? { estado: "cancelado", titulo: "Atualização interrompida", msg: `${concluidos} de ${totalAtualizacao} processados.` }
+          : {
+              estado: falhas === totalAtualizacao ? "erro" : "ok",
+              titulo: falhas ? "Atualização concluída com avisos" : "Atualização concluída",
+              msg: `${concluidos - falhas} de ${totalAtualizacao} atualizados${falhas ? ` · ${falhas} com falha` : ""}.`
+            });
+        carregar();
+      },
+      erro: ({ motivo }) => {
+        setToastAtualizacao({
+          estado: "erro",
+          titulo: "Falha na atualização",
+          msg: motivo || "O servidor encerrou a atualização antes de concluir."
+        });
+        setAtualizando(false);
+        setCancelarAtualizacao(null);
+        carregar();
+      }
     });
     setCancelarAtualizacao(() => parar);
   }
@@ -487,11 +646,22 @@ export default function Acervo() {
   // Para de verdade: avisa o SERVIDOR (senao segue baixando a fila) e aborta o stream.
   async function pararAtualizacao() {
     setParandoAtualizacao(true);
+    setToastAtualizacao(t => ({
+      ...(t || {}),
+      estado: "progresso",
+      titulo: "Interrompendo atualização",
+      msg: "Aguardando o processo atual parar…"
+    }));
     try { await api.cancelarDownload(); } catch { /* aborta o stream mesmo assim */ }
     if (cancelarAtualizacao) cancelarAtualizacao();
     setAtualizando(false);
     setParandoAtualizacao(false);
     setCancelarAtualizacao(null);
+    setToastAtualizacao({
+      estado: "cancelado",
+      titulo: "Atualização interrompida",
+      msg: "Os conteúdos já concluídos foram preservados."
+    });
     carregar();
   }
 
@@ -561,7 +731,9 @@ export default function Acervo() {
   const inicio = (paginaAtual - 1) * POR_PAGINA;
   const paginados = filtrados.slice(inicio, inicio + POR_PAGINA);
 
-  // --- Selecao (checkboxes) — escopo da PAGINA VISIVEL ---
+  // --- Selecao global — cobre todas as paginas do resultado filtrado ---
+  const idsFiltrados = filtrados.map(i => String(i.id));
+  const todosFiltradosMarcados = idsFiltrados.length > 0 && idsFiltrados.every(id => selecionados.has(id));
   const idsDaPagina = paginados.map(i => String(i.id));
   const todosDaPaginaMarcados = idsDaPagina.length > 0 && idsDaPagina.every(id => selecionados.has(id));
   function alternarSelecao(id) {
@@ -571,12 +743,22 @@ export default function Acervo() {
       return p;
     });
   }
-  function alternarTodosDaPagina() {
+  function selecionarTodosFiltrados() {
     setSelecionados(prev => {
       const p = new Set(prev);
-      if (todosDaPaginaMarcados) idsDaPagina.forEach(id => p.delete(id));
-      else idsDaPagina.forEach(id => p.add(id));
+      idsFiltrados.forEach(id => p.add(id));
       return p;
+    });
+  }
+  function desmarcarTodos() {
+    setSelecionados(new Set());
+  }
+  function alternarSelecaoDaPagina() {
+    setSelecionados(prev => {
+      const proximo = new Set(prev);
+      if (todosDaPaginaMarcados) idsDaPagina.forEach(id => proximo.delete(id));
+      else idsDaPagina.forEach(id => proximo.add(id));
+      return proximo;
     });
   }
 
@@ -593,6 +775,18 @@ export default function Acervo() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  useEffect(() => {
+    if (!toastVerificacao || toastVerificacao.estado === "progresso") return;
+    const t = setTimeout(() => setToastVerificacao(null), 10000);
+    return () => clearTimeout(t);
+  }, [toastVerificacao]);
+
+  useEffect(() => {
+    if (!toastAtualizacao || toastAtualizacao.estado === "progresso") return;
+    const t = setTimeout(() => setToastAtualizacao(null), 10000);
+    return () => clearTimeout(t);
+  }, [toastAtualizacao]);
+
   if (erro) return <div className="aviso erro">{erro}</div>;
   if (!itens) return <div className="carregando">Carregando acervo...</div>;
 
@@ -602,26 +796,131 @@ export default function Acervo() {
 
       {toast && (
         <div className={`toast toast-${toast.estado}`} role="status" aria-live="polite">
-          <button className="toast-fechar" title="Fechar" onClick={() => setToast(null)}>×</button>
+          <button
+            className="toast-fechar"
+            title={downloadEstruturaId !== null ? "Cancelar download" : "Fechar"}
+            aria-label={downloadEstruturaId !== null ? "Cancelar download" : "Fechar aviso"}
+            onClick={fecharOuCancelarToast}
+          >×</button>
           {toast.estado === "progresso" ? (
             <>
               <div className="toast-titulo">Preparando “{toast.nomeAula}”…</div>
               <div className="toast-msg">
-                {toast.total ? `Página ${toast.pagina} de ${toast.total} preparadas.` : "Resolvendo versões…"}
+                {toast.total ? `Página ${toast.pagina} de ${toast.total} preparadas.` : (toast.msg || "Resolvendo versões…")}
               </div>
               <div className="toast-barra">
                 <div
-                  className="toast-barra-fill"
+                  className={`toast-barra-fill${toast.indeterminado ? " toast-barra-indeterminada" : ""}`}
                   style={{ width: `${toast.total ? Math.round((toast.pagina / toast.total) * 100) : 6}%` }}
                 />
               </div>
             </>
           ) : (
             <>
-              <div className="toast-titulo">{toast.estado === "ok" ? "✓ " : "⚠ "}{toast.nomeAula}</div>
+              <div className="toast-titulo">
+                {toast.estado === "ok" ? "✓ " : toast.estado === "cancelado" ? "× " : "⚠ "}{toast.nomeAula}
+              </div>
               <div className="toast-msg">{toast.msg}</div>
             </>
           )}
+        </div>
+      )}
+
+      {toastVerificacao && (
+        <div
+          className={`toast toast-verificacao${toast ? " toast-verificacao-com-download" : ""} toast-${toastVerificacao.estado}`}
+          role="status"
+          aria-live="polite"
+        >
+          {toastVerificacao.estado !== "progresso" && (
+            <button
+              className="toast-fechar"
+              title="Fechar"
+              aria-label="Fechar aviso de verificação"
+              onClick={() => setToastVerificacao(null)}
+            >×</button>
+          )}
+          <div className="toast-titulo">
+            {toastVerificacao.estado === "ok" ? "✓ " : toastVerificacao.estado === "erro" ? "⚠ " : ""}
+            {toastVerificacao.titulo}
+          </div>
+          <div className="toast-msg">{toastVerificacao.msg}</div>
+          {toastVerificacao.estado === "progresso" && (
+            <div className="toast-barra">
+              <div className="toast-barra-fill toast-barra-indeterminada" />
+            </div>
+          )}
+        </div>
+      )}
+
+      {toastAtualizacao && (
+        <div
+          className={`toast toast-atualizacao${toast ? " toast-atualizacao-com-download" : ""} toast-${toastAtualizacao.estado}`}
+          role="status"
+          aria-live="polite"
+        >
+          {toastAtualizacao.estado !== "progresso" && (
+            <button
+              className="toast-fechar"
+              title="Fechar"
+              aria-label="Fechar aviso de atualização"
+              onClick={() => setToastAtualizacao(null)}
+            >×</button>
+          )}
+          <div className="toast-titulo">
+            {toastAtualizacao.estado === "ok" ? "✓ " : toastAtualizacao.estado === "erro" ? "⚠ " : toastAtualizacao.estado === "cancelado" ? "× " : ""}
+            {toastAtualizacao.titulo}
+          </div>
+          <div className="toast-msg">{toastAtualizacao.msg}</div>
+          {toastAtualizacao.estado === "progresso" && (
+            <div className="toast-barra">
+              <div className="toast-barra-fill" style={{ width: `${toastAtualizacao.pct || 0}%` }} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {confirmacaoRemocao && (
+        <div
+          className="modal-fundo"
+          onMouseDown={e => {
+            if (e.target === e.currentTarget && removendo === null) {
+              setConfirmacaoRemocao(null);
+            }
+          }}
+        >
+          <section
+            className="modal-confirmacao"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="titulo-confirmar-remocao"
+            aria-describedby="texto-confirmar-remocao"
+          >
+            <div className="modal-confirmacao-icone" aria-hidden="true"><IconeLixeira /></div>
+            <h2 id="titulo-confirmar-remocao">Apagar conteúdo do acervo?</h2>
+            <p id="texto-confirmar-remocao">
+              Você está prestes a apagar <strong>“{confirmacaoRemocao.nome}”</strong> e seus arquivos armazenados.
+              Essa ação não pode ser desfeita.
+            </p>
+            <div className="modal-confirmacao-acoes">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setConfirmacaoRemocao(null)}
+                disabled={removendo !== null}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="botao-perigo"
+                onClick={() => remover(confirmacaoRemocao)}
+                disabled={removendo !== null}
+              >
+                {removendo !== null ? <><span className="spin-acao" /> Apagando…</> : "Confirmar"}
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -670,57 +969,61 @@ export default function Acervo() {
             </div>
           </div>
 
-          <div className="barra-acao">
-            <span className="contagem">
+          <BarraAcao
+            busca={busca}
+            onBusca={setBusca}
+            contagem={
+              <>
               {filtrados.length
                 ? `${inicio + 1}–${inicio + paginados.length} de ${filtrados.length}`
                 : "0"} conteúdos
               {(fTipo || fComponente || fSegmento || fSerie || fAtualizacao || busca.trim()) ? ` (filtrado de ${itens.length})` : ""}
               {selecionados.size ? ` · ${selecionados.size} selecionada(s)` : ""}
-            </span>
-            <div className="busca-wrap barra-busca">
-              <input
-                type="text"
-                value={busca}
-                onChange={e => setBusca(e.target.value)}
-                placeholder="id ou nome do conteúdo"
-              />
-              {busca && (
-                <button type="button" className="busca-limpar" title="Limpar busca" onClick={() => setBusca("")}>
-                  ×
+              </>
+            }
+          >
+              <button
+                onClick={todosFiltradosMarcados ? desmarcarTodos : selecionarTodosFiltrados}
+                disabled={!idsFiltrados.length || atualizando || verificando || reindexando}
+                title={todosFiltradosMarcados
+                  ? "Limpa toda a seleção"
+                  : "Seleciona todos os conteúdos do resultado filtrado, em todas as páginas"}
+              >
+                {todosFiltradosMarcados ? "Desmarcar todas" : "Selecionar todas"}
+              </button>
+              {atualizando ? (
+                <button onClick={pararAtualizacao} disabled={parandoAtualizacao}>
+                  {parandoAtualizacao ? "Parando..." : "Parar"}
+                </button>
+              ) : (
+                <button className="primario" onClick={atualizarSelecionados} disabled={selecionados.size === 0 || verificando}
+                  title={selecionados.size === 0
+                    ? "Selecione as aulas que deseja atualizar"
+                    : "Rebaixa as aulas selecionadas por cima (mesma ação do Catálogo) — traz a versão mais nova"}>
+                  Atualizar{selecionados.size ? ` (${selecionados.size})` : ""}
                 </button>
               )}
-            </div>
-            <div className="espaco" />
-            {atualizando ? (
-              <button onClick={pararAtualizacao} disabled={parandoAtualizacao}>
-                {parandoAtualizacao ? "Parando..." : "Parar"}
+              <button
+                className={verificando ? "botao-com-status" : undefined}
+                onClick={verificar}
+                disabled={verificando || atualizando || filtrados.length === 0}
+                aria-busy={verificando}
+                title={selecionados.size
+                  ? "Verifica no AVA as aulas selecionadas (não baixa nada)"
+                  : "Nada selecionado: verifica TODAS as aulas listadas (não baixa nada)"}>
+                {verificando
+                  ? <><span className="spin-botao" /> Verificando...</>
+                  : `Verificar (${selecionados.size || filtrados.length})`}
               </button>
-            ) : (
-              <button className="primario" onClick={atualizarSelecionados} disabled={selecionados.size === 0}
-                title={selecionados.size === 0
-                  ? "Selecione as aulas que deseja atualizar"
-                  : "Rebaixa as aulas selecionadas por cima (mesma ação do Catálogo) — traz a versão mais nova"}>
-                Atualizar{selecionados.size ? ` (${selecionados.size})` : ""}
+              <button onClick={reindexar} disabled={reindexando || atualizando || filtrados.length === 0}
+                title={selecionados.size
+                  ? "Corrige série, segmento e disciplina das aulas selecionadas — sem re-baixar"
+                  : "Nada selecionado: corrige série, segmento e disciplina de TODAS as aulas listadas — sem re-baixar"}>
+                {reindexando
+                  ? "Corrigindo..."
+                  : `Corrigir dados (${selecionados.size || filtrados.length})`}
               </button>
-            )}
-            <button onClick={verificar} disabled={verificando || atualizando || filtrados.length === 0}
-              title={selecionados.size
-                ? "Verifica no AVA as aulas selecionadas (não baixa nada)"
-                : "Nada selecionado: verifica TODAS as aulas listadas (não baixa nada)"}>
-              {verificando
-                ? "Verificando..."
-                : `Verificar atualizações (${selecionados.size || filtrados.length})`}
-            </button>
-            <button onClick={reindexar} disabled={reindexando || atualizando || filtrados.length === 0}
-              title={selecionados.size
-                ? "Corrige série, segmento e disciplina das aulas selecionadas — sem re-baixar"
-                : "Nada selecionado: corrige série, segmento e disciplina de TODAS as aulas listadas — sem re-baixar"}>
-              {reindexando
-                ? "Corrigindo..."
-                : `Corrigir série e disciplina (${selecionados.size || filtrados.length})`}
-            </button>
-          </div>
+          </BarraAcao>
 
           <div className="tabela-wrap">
             <table>
@@ -730,9 +1033,10 @@ export default function Acervo() {
                     <input
                       type="checkbox"
                       checked={todosDaPaginaMarcados}
-                      onChange={alternarTodosDaPagina}
-                      title="Selecionar todas as aulas desta página"
-                      aria-label="Selecionar todas as aulas desta página"
+                      disabled={!idsDaPagina.length || atualizando || verificando || reindexando}
+                      onChange={alternarSelecaoDaPagina}
+                      title="Selecionar ou desmarcar os conteúdos desta página"
+                      aria-label="Selecionar ou desmarcar os conteúdos desta página"
                     />
                   </th>
                   <th className="col-esq">ID</th>
@@ -811,12 +1115,23 @@ export default function Acervo() {
                       <td className="col-atualizacao">{seloAtualizacao(updates.get(String(item.id)))}</td>
                       <td className="col-acoes">
                         <div className="acoes-linha">
-                          <button className="acao-icone baixar-estrutura" title="Baixar estrutura de LOs (zip: uma pasta por LO com os arquivos da aula)"
-                            onClick={() => baixarEstrutura(item)}>
-                            <IconeBaixar />
+                          <button
+                            className="acao-icone baixar-estrutura"
+                            title={downloadEstruturaId
+                              ? (downloadEstruturaId === String(item.id)
+                                  ? "Este download está sendo preparado"
+                                  : "Aguarde o download atual terminar")
+                              : "Baixar estrutura de LOs (zip: uma pasta por LO com os arquivos da aula)"}
+                            aria-label={downloadEstruturaId === String(item.id)
+                              ? `Preparando download de ${item.nome}`
+                              : `Baixar estrutura de ${item.nome}`}
+                            onClick={() => baixarEstrutura(item)}
+                            disabled={downloadEstruturaId !== null}
+                          >
+                            {downloadEstruturaId === String(item.id) ? <span className="spin-acao" /> : <IconeBaixar />}
                           </button>
                           <button className="acao-icone lixeira" title="Apagar do acervo"
-                            onClick={() => remover(item)} disabled={removendo === item.id}>
+                            onClick={() => setConfirmacaoRemocao(item)} disabled={removendo !== null}>
                             {removendo === item.id ? <span className="spin-acao" /> : <IconeLixeira />}
                           </button>
                         </div>

@@ -56,9 +56,10 @@ export const api = {
 // (URL relativa cairia no frontend no Render, servindo o index.html -> "voltava pro
 // catalogo"): busca via fetch em BASE_API com credenciais, le o blob e dispara o
 // save no cliente. O nome do arquivo vem do Content-Disposition do servidor.
-export async function baixarEstruturaLOs(id) {
+export async function baixarEstruturaLOs(id, { signal } = {}) {
   const resposta = await fetch(`${BASE_API}/api/acervo/${encodeURIComponent(id)}/estrutura`, {
-    credentials: "include"
+    credentials: "include",
+    signal
   });
   if (!resposta.ok) {
     const dados = await resposta.json().catch(() => ({}));
@@ -99,6 +100,7 @@ export function baixarPublicavel(id, callbacks = {}) {
       const leitor = resposta.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let terminou = false;
 
       for (;;) {
         const { done, value } = await leitor.read();
@@ -114,12 +116,22 @@ export function baixarPublicavel(id, callbacks = {}) {
           const dados = JSON.parse(linhaDados);
 
           if (linhaEvento === "pronto") {
-            await salvarZipPublicavel(id, dados.token, dados.nome);
+            await salvarZipPublicavel(id, dados.token, dados.nome, controlador.signal);
+            terminou = true;
             callbacks.fim?.(dados);
+          } else if (linhaEvento === "erro") {
+            terminou = true;
+            callbacks.erro?.(dados);
           } else {
             callbacks[linhaEvento]?.(dados);
           }
         }
+      }
+
+      // Evita manter toda a interface de download bloqueada caso o Render encerre
+      // o stream antes de enviar um evento terminal.
+      if (!terminou && !controlador.signal.aborted) {
+        throw new Error("O servidor encerrou a preparação antes de concluir o arquivo.");
       }
     })
     .catch(erro => {
@@ -130,10 +142,10 @@ export function baixarPublicavel(id, callbacks = {}) {
 }
 
 // Busca o zip publicavel pelo token (uso unico) e dispara o save no cliente.
-async function salvarZipPublicavel(id, token, nome) {
+async function salvarZipPublicavel(id, token, nome, signal) {
   const resposta = await fetch(
     `${BASE_API}/api/acervo/${encodeURIComponent(id)}/publicavel/zip?token=${encodeURIComponent(token)}`,
-    { credentials: "include" }
+    { credentials: "include", signal }
   );
   if (!resposta.ok) {
     const dados = await resposta.json().catch(() => ({}));

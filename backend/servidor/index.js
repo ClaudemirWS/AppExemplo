@@ -764,6 +764,11 @@ function guardarZipPublicavel(nome, bytes) {
 app.get("/api/acervo/:id/publicavel", async (req, res) => {
   if (!exigirSessao(req, res)) return;
   const id = String(req.params.id || "");
+  const controlador = new AbortController();
+
+  res.on("close", () => {
+    if (!res.writableFinished) controlador.abort();
+  });
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -773,6 +778,7 @@ app.get("/api/acervo/:id/publicavel", async (req, res) => {
   });
   res.flushHeaders?.();
   const enviar = (evento, dados) => {
+    if (controlador.signal.aborted || res.writableEnded) return;
     res.write(`event: ${evento}\ndata: ${JSON.stringify(dados)}\n\n`);
     res.flush?.();
   };
@@ -795,14 +801,21 @@ app.get("/api/acervo/:id/publicavel", async (req, res) => {
 
     const { nome, bytesZip } = await montarZipPublicavel({
       detalhes,
+      signal: controlador.signal,
       onPagina: (pagina, totalPaginas, nomePagina) =>
         enviar("pagina", { pagina, total: totalPaginas, nome: nomePagina })
     });
 
+    if (controlador.signal.aborted) return;
     const token = guardarZipPublicavel(nome, Buffer.from(bytesZip));
     enviar("pronto", { token, nome });
     res.end();
   } catch (erro) {
+    if (controlador.signal.aborted || erro?.name === "AbortError") {
+      console.info(`[AVA_DOWNLOAD] PUBLICAVEL_CANCELADO id=${id}`);
+      if (!res.writableEnded) res.end();
+      return;
+    }
     const motivo =
       erro instanceof PaginaSemVersaoError
         ? erro.message
