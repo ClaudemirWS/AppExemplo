@@ -22,12 +22,16 @@ export const EXTENSOES_RECURSO =
 // `sons/` (em portugues) e das aulas Animate da Educandus: os mp3 sao referenciados
 // DINAMICAMENTE no JS ("sons/"+nome+".mp3"), que o crawler nao extrai — so sao pegos
 // espelhando a pasta por listagem. Sem `sons/` aqui a aula baixava SEM AUDIO.
-export const DIRETORIOS_COMUNS = ["assets/", "css/", "js/", "xml/", "libs/", "images/", "media/", "icons/", "sounds/", "sons/"];
+// `textos/`: as aulas Animate "modernas" carregam os textos das falas por
+// `$.getJSON("./textos/"+nome+".json")` — nome DINAMICO, invisivel ao crawler de
+// HTML/JS. Sem espelhar a pasta, o JSON faltava e a aula ficava em "file not found"
+// em loop (mesmo motivo do `sons/`).
+export const DIRETORIOS_COMUNS = ["assets/", "css/", "js/", "xml/", "libs/", "images/", "media/", "icons/", "sounds/", "sons/", "textos/"];
 // Uniao dos dois conjuntos, para o espelho do publicador nao precisar saber o
 // formato antes de varrer. Listar um diretorio inexistente custa um 404.
 export const DIRETORIOS_ESPELHO = [
   "assets/", "css/", "js/", "xml/", "libs/",
-  "images/", "media/", "icons/", "sounds/", "sons/", "scripts/", "videos/"
+  "images/", "media/", "icons/", "sounds/", "sons/", "scripts/", "videos/", "textos/"
 ];
 // `images/` e `media/` sao do Construct 2; `icons/`, `scripts/`, `sounds/` e
 // `videos/`, do 3. A lista serve aos dois: um diretorio que nao existe apenas nao
